@@ -195,7 +195,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                  </span>
             </div>
             
-            <h2 className="text-xl sm:text-2xl font-normal text-gray-900 leading-snug mb-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 leading-snug mb-4">
               {cleanName}
             </h2>
 

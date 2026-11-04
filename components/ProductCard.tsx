@@ -383,9 +383,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
       {/* Content Area - Enlarged title text and room for product name */}
       <div className={`${isMini ? 'p-1.5 pt-1.5 sm:p-2' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`}>
         <div>
-          <div className="min-h-[2.75rem] sm:min-h-[3.15rem] flex items-start">
+          <div className="min-h-[2.4rem] sm:min-h-[2.8rem] flex items-start">
             <h3 
-              className={`font-normal text-gray-800 line-clamp-2 leading-snug ${isMini ? 'text-xs sm:text-[13px]' : 'text-sm sm:text-base md:text-[15.5px]'}`} 
+              className={`font-bold text-gray-800 line-clamp-2 leading-snug ${isMini ? 'text-[10px] sm:text-[11.5px]' : 'text-xs sm:text-[13px] md:text-sm'}`} 
               title={product.productName}
             >
               {cleanName}

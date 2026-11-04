@@ -759,6 +759,17 @@ const App: React.FC = () => {
   const [activeCatalogByMarket, setActiveCatalogByMarket] = useState<Record<string, string>>({});
   const [visibleDetailCount, setVisibleDetailCount] = useState(24);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  const featuredCarouselRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollFeaturedCarousel = (direction: 'left' | 'right') => {
+    if (featuredCarouselRef.current) {
+      const scrollAmount = featuredCarouselRef.current.clientWidth * 0.75;
+      featuredCarouselRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   const parsePriceNumber = (val: any): number => {
     if (val === null || val === undefined) return NaN;
@@ -985,94 +996,74 @@ const App: React.FC = () => {
 
   const sortedMarkets = useMemo(() => sortMarketsByOrder(markets), [markets]);
 
-  // 3 sample products from 3 distinct markets, matching the user's reference image
+  // One sample product from each market, horizontally scrollable
   const sampleFeaturedProducts = useMemo(() => {
     const list: { product: DiscountProduct; market: MarketData }[] = [];
     const usedMarkets = new Set<string>();
 
-    // 1st pass: Pick 1 product from distinct markets that have valid items
     for (const m of sortedMarkets) {
-      if (list.length >= 3) break;
       const prods = (m.catalogs && m.catalogs.length > 0)
         ? m.catalogs.flatMap(c => c.products || [])
         : (m.products || []);
       
       const candidate = prods.find(p => p.productName && p.newPrice && p.newPrice !== '---');
-      if (candidate && !usedMarkets.has(m.id)) {
+      if (candidate) {
         list.push({ product: candidate, market: m });
         usedMarkets.add(m.id);
       }
     }
 
-    // 2nd pass: If less than 3 distinct markets, pick remaining products from available markets
-    if (list.length < 3) {
-      for (const m of sortedMarkets) {
-        if (list.length >= 3) break;
-        const prods = (m.catalogs && m.catalogs.length > 0)
-          ? m.catalogs.flatMap(c => c.products || [])
-          : (m.products || []);
-        
-        for (const p of prods) {
-          if (list.length >= 3) break;
-          if (p.productName && !list.some(item => item.product.productName === p.productName)) {
-            list.push({ product: p, market: m });
-          }
+    // Default sample fallbacks for primary markets if no products are in the database yet
+    const fallbackSamples = [
+      {
+        marketId: 'oba',
+        marketName: 'Oba Market',
+        themeColor: 'green',
+        logoUrl: 'https://seeklogo.com/images/O/oba-market-logo-3626297371-seeklogo.com.png',
+        product: {
+          id: 'sample-oba',
+          productName: 'Tamdad gürcü xəngəli 600 q',
+          category: 'Qida & Paxlalılar' as const,
+          newPrice: '4.99',
+          oldPrice: '7.99',
+          discountPercentage: '-38%',
+          customImageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=400&auto=format&fit=crop&q=80'
+        }
+      },
+      {
+        marketId: 'araz',
+        marketName: 'Araz Market',
+        themeColor: 'amber',
+        logoUrl: 'https://b7x9kq.arazmarket.az/storage/news/dsc_9152.jpg',
+        product: {
+          id: 'sample-araz',
+          productName: 'Tamdad düşbərə dana əti ilə 400 q',
+          category: 'Qida & Paxlalılar' as const,
+          newPrice: '3.99',
+          oldPrice: '5.59',
+          discountPercentage: '-29%',
+          customImageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400&auto=format&fit=crop&q=80'
+        }
+      },
+      {
+        marketId: 'bravo',
+        marketName: 'Bravo',
+        themeColor: 'amber',
+        logoUrl: 'https://bravosupermarket.az/img/bravo-logo.png',
+        product: {
+          id: 'sample-bravo',
+          productName: 'Tamdad gürzə dana əti ilə 400 q',
+          category: 'Qida & Paxlalılar' as const,
+          newPrice: '4.50',
+          oldPrice: '6.25',
+          discountPercentage: '-28%',
+          customImageUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&auto=format&fit=crop&q=80'
         }
       }
-    }
+    ];
 
-    // 3rd pass: Fallback samples if database is loading or empty
-    if (list.length < 3) {
-      const fallbackSamples = [
-        {
-          marketId: 'oba',
-          marketName: 'Oba Market',
-          themeColor: 'green',
-          logoUrl: 'https://seeklogo.com/images/O/oba-market-logo-3626297371-seeklogo.com.png',
-          product: {
-            id: 'sample-1',
-            productName: 'Tamdad gürcü xəngəli 600 q',
-            category: 'Qida & Paxlalılar' as const,
-            newPrice: '4.99',
-            oldPrice: '7.99',
-            discountPercentage: '-38%',
-            customImageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=400&auto=format&fit=crop&q=80'
-          }
-        },
-        {
-          marketId: 'araz',
-          marketName: 'Araz Market',
-          themeColor: 'amber',
-          logoUrl: 'https://b7x9kq.arazmarket.az/storage/news/dsc_9152.jpg',
-          product: {
-            id: 'sample-2',
-            productName: 'Tamdad düşbərə dana əti ilə 400 q',
-            category: 'Qida & Paxlalılar' as const,
-            newPrice: '3.99',
-            oldPrice: '5.59',
-            discountPercentage: '-29%',
-            customImageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400&auto=format&fit=crop&q=80'
-          }
-        },
-        {
-          marketId: 'bravo',
-          marketName: 'Bravo',
-          themeColor: 'amber',
-          logoUrl: 'https://bravosupermarket.az/img/bravo-logo.png',
-          product: {
-            id: 'sample-3',
-            productName: 'Tamdad gürzə dana əti ilə 400 q',
-            category: 'Qida & Paxlalılar' as const,
-            newPrice: '4.50',
-            oldPrice: '6.25',
-            discountPercentage: '-28%',
-            customImageUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&auto=format&fit=crop&q=80'
-          }
-        }
-      ];
-
-      for (const fallback of fallbackSamples) {
-        if (list.length >= 3) break;
+    for (const fallback of fallbackSamples) {
+      if (!usedMarkets.has(fallback.marketId)) {
         const matchedMarket = sortedMarkets.find(m => m.id === fallback.marketId) || {
           id: fallback.marketId,
           name: fallback.marketName,
@@ -1086,6 +1077,7 @@ const App: React.FC = () => {
           instagramPosts: []
         };
         list.push({ product: fallback.product, market: matchedMarket });
+        usedMarkets.add(fallback.marketId);
       }
     }
 
@@ -1891,27 +1883,54 @@ const App: React.FC = () => {
                   <>
                     {activeMarketId === null ? (
                       <div className="space-y-6 sm:space-y-8 animate-[fadeIn_0.4s_ease-out] max-w-2xl sm:max-w-3xl mx-auto">
-                        {/* 3 Sample Products from 3 distinct markets, right under search / fursətlər bar */}
+                        {/* Horizontally scrollable row of featured products: 1 product from each market */}
                         {sampleFeaturedProducts.length > 0 && (
-                          <div>
-                            <div className="grid grid-cols-3 gap-2 sm:gap-3.5 md:gap-4">
+                          <div className="relative group/carousel">
+                            {/* Left scroll arrow (desktop) */}
+                            <button
+                              type="button"
+                              onClick={() => scrollFeaturedCarousel('left')}
+                              className="hidden md:flex absolute -left-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                              title="Əvvəlki"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+
+                            <div 
+                              ref={featuredCarouselRef}
+                              className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide scroll-smooth py-1 px-0.5"
+                            >
                               {sampleFeaturedProducts.map(({ product, market }, idx) => (
-                                <ProductCard
+                                <div 
                                   key={`sample-hero-${market.id}-${idx}`}
-                                  product={product}
-                                  accentColor={market.themeColor || 'green'}
-                                  marketLogoUrl={market.logoUrl}
-                                  marketName={market.name}
-                                  catalogEndDate={market.catalogs?.[0]?.endDate}
-                                  hideCountdown={true}
-                                  isAdmin={isAdmin}
-                                  variant="compact"
-                                  onClick={() => !isAdmin && setViewProduct({ product, marketName: market.name, catalogEndDate: market.catalogs?.[0]?.endDate })}
-                                  isFavorite={isFavorite(product.productName || '', market.id)}
-                                  onToggleFavorite={() => toggleFavorite(product, market.id)}
-                                />
+                                  className="w-[calc((100%-16px)/3)] min-w-[110px] sm:min-w-[140px] md:min-w-[160px] max-w-[190px] shrink-0"
+                                >
+                                  <ProductCard
+                                    product={product}
+                                    accentColor={market.themeColor || 'green'}
+                                    marketLogoUrl={market.logoUrl}
+                                    marketName={market.name}
+                                    catalogEndDate={market.catalogs?.[0]?.endDate}
+                                    hideCountdown={true}
+                                    isAdmin={isAdmin}
+                                    variant="compact"
+                                    onClick={() => !isAdmin && setViewProduct({ product, marketName: market.name, catalogEndDate: market.catalogs?.[0]?.endDate })}
+                                    isFavorite={isFavorite(product.productName || '', market.id)}
+                                    onToggleFavorite={() => toggleFavorite(product, market.id)}
+                                  />
+                                </div>
                               ))}
                             </div>
+
+                            {/* Right scroll arrow (desktop) */}
+                            <button
+                              type="button"
+                              onClick={() => scrollFeaturedCarousel('right')}
+                              className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                              title="Növbəti"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
                           </div>
                         )}
 
@@ -2072,33 +2091,28 @@ const App: React.FC = () => {
                                           role="button"
                                           tabIndex={0}
                                           title="Kateqoriyanı dəyişmək üçün klikləyin"
-                                          className="sticky z-20 bg-white/95 backdrop-blur-md -mx-2 sm:-mx-4 px-2 sm:px-4 py-2 border-b border-gray-100 flex items-center justify-between gap-2 shadow-2xs transition-[top] duration-150 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none group"
+                                          className="sticky z-20 bg-white/95 backdrop-blur-md -mx-2 sm:-mx-4 px-2 sm:px-4 py-2 sm:py-2.5 border-b border-gray-100 flex items-center justify-center relative shadow-2xs transition-[top] duration-150 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none group"
                                         >
-                                          <div className="flex items-center gap-2 min-w-0">
+                                          <div className="flex items-center justify-center gap-2 min-w-0 max-w-[80%] text-center">
                                             <div className={`w-2.5 sm:w-3 h-7 sm:h-8 rounded-full bg-${mktAccent}-600 shrink-0 group-hover:scale-y-110 transition-transform`}></div>
                                             <h3 className="font-black text-lg sm:text-2xl text-gray-900 tracking-tight truncate flex items-center gap-2">
                                               <span>{selectedCategoryFilter}</span>
                                               <ChevronDown className={`w-5 h-5 sm:w-6 sm:h-6 text-gray-400 group-hover:text-gray-700 transition-transform duration-200 ${activeCategoryDropdown === 'filter' ? 'rotate-180 text-gray-800' : ''}`} />
                                             </h3>
                                           </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <span className="text-[10px] sm:text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                                              {displayedProducts.length} məhsul
-                                            </span>
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedCategoryFilter(null);
-                                                setActiveCategoryDropdown(null);
-                                                setVisibleDetailCount(24);
-                                              }}
-                                              className="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 cursor-pointer"
-                                              title="Bütün kateqoriyaları göstər"
-                                            >
-                                              <X className="w-3 h-3" /> Hamısı
-                                            </button>
-                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedCategoryFilter(null);
+                                              setActiveCategoryDropdown(null);
+                                              setVisibleDetailCount(24);
+                                            }}
+                                            className="absolute right-2 sm:right-4 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 cursor-pointer"
+                                            title="Bütün kateqoriyaları göstər"
+                                          >
+                                            <X className="w-3 h-3" /> Hamısı
+                                          </button>
                                         </div>
 
                                         {/* Simple vertical list of category names right underneath the clicked text */}
@@ -2204,22 +2218,14 @@ const App: React.FC = () => {
                                                 role="button"
                                                 tabIndex={0}
                                                 title="Bütün kateqoriyaları gör və seç"
-                                                className="sticky z-20 bg-white/95 backdrop-blur-md -mx-2 sm:-mx-4 px-2 sm:px-4 py-2 border-b border-gray-100 flex items-center justify-between gap-2 shadow-2xs transition-[top] duration-150 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none group"
+                                                className="sticky z-20 bg-white/95 backdrop-blur-md -mx-2 sm:-mx-4 px-2 sm:px-4 py-2 sm:py-2.5 border-b border-gray-100 flex items-center justify-center relative shadow-2xs transition-[top] duration-150 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none group"
                                               >
-                                                <div className="flex items-center gap-2 min-w-0">
+                                                <div className="flex items-center justify-center gap-2 min-w-0 max-w-[85%] text-center">
                                                   <div className={`w-2.5 sm:w-3 h-7 sm:h-8 rounded-full bg-${mktAccent}-600 shrink-0 group-hover:scale-y-110 transition-transform`}></div>
                                                   <h3 className="font-black text-lg sm:text-2xl text-gray-900 tracking-tight truncate flex items-center gap-2">
                                                     <span>{group.category}</span>
                                                     <ChevronDown className={`w-5 h-5 sm:w-6 sm:h-6 text-gray-400 group-hover:text-gray-700 transition-transform duration-200 ${isThisDropdownOpen ? 'rotate-180 text-gray-800' : ''}`} />
                                                   </h3>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 shrink-0">
-                                                  <span className="text-[10px] sm:text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                                                    {group.products.length} məhsul
-                                                  </span>
-                                                  <span className="text-[10px] font-bold text-gray-500 bg-gray-50 group-hover:bg-gray-100 px-2 py-0.5 rounded-full transition-colors flex items-center gap-1">
-                                                    Kateqoriyalar <ChevronDown className="w-2.5 h-2.5" />
-                                                  </span>
                                                 </div>
                                               </div>
 
