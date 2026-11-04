@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix endirim.net no1",
+  "description": "Araz və Oba marketlərinin endirim kataloqlarını süni zəka ilə analiz edən və fürsətləri siyahılayan tətbiq.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
