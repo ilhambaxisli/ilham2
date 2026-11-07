@@ -761,6 +761,8 @@ const App: React.FC = () => {
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const featuredCarouselRef = useRef<HTMLDivElement | null>(null);
 
+  const [carouselActiveIndex, setCarouselActiveIndex] = useState(0);
+
   const scrollFeaturedCarousel = (direction: 'left' | 'right') => {
     if (featuredCarouselRef.current) {
       const scrollAmount = featuredCarouselRef.current.clientWidth * 0.75;
@@ -768,6 +770,17 @@ const App: React.FC = () => {
         left: direction === 'left' ? -scrollAmount : scrollAmount,
         behavior: 'smooth'
       });
+    }
+  };
+
+  const handleCarouselScroll = () => {
+    if (featuredCarouselRef.current) {
+      const el = featuredCarouselRef.current;
+      const scrollLeft = el.scrollLeft;
+      const firstChild = el.firstElementChild as HTMLElement | null;
+      const itemWidth = firstChild ? firstChild.offsetWidth + 8 : 150;
+      const index = Math.round(scrollLeft / itemWidth);
+      setCarouselActiveIndex(Math.max(0, index));
     }
   };
 
@@ -823,7 +836,43 @@ const App: React.FC = () => {
   const [marketToEdit, setMarketToEdit] = useState<MarketData | null>(null);
   const [productToEdit, setProductToEdit] = useState<{product: DiscountProduct, index: number, catalogId?: string} | null>(null);
   const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState(false);
-  const [viewProduct, setViewProduct] = useState<{product: DiscountProduct, marketName: string, catalogEndDate?: string} | null>(null);
+  const [viewProduct, setViewProduct] = useState<{
+    product: DiscountProduct;
+    marketName: string;
+    catalogEndDate?: string;
+    productList?: { product: DiscountProduct; marketName: string; catalogEndDate?: string }[];
+    currentIndex?: number;
+  } | null>(null);
+
+  const handleNextProductInModal = () => {
+    if (!viewProduct || !viewProduct.productList || viewProduct.currentIndex === undefined) return;
+    const nextIdx = viewProduct.currentIndex + 1;
+    if (nextIdx < viewProduct.productList.length) {
+      const nextItem = viewProduct.productList[nextIdx];
+      setViewProduct({
+        product: nextItem.product,
+        marketName: nextItem.marketName,
+        catalogEndDate: nextItem.catalogEndDate,
+        productList: viewProduct.productList,
+        currentIndex: nextIdx
+      });
+    }
+  };
+
+  const handlePrevProductInModal = () => {
+    if (!viewProduct || !viewProduct.productList || viewProduct.currentIndex === undefined) return;
+    const prevIdx = viewProduct.currentIndex - 1;
+    if (prevIdx >= 0) {
+      const prevItem = viewProduct.productList[prevIdx];
+      setViewProduct({
+        product: prevItem.product,
+        marketName: prevItem.marketName,
+        catalogEndDate: prevItem.catalogEndDate,
+        productList: viewProduct.productList,
+        currentIndex: prevIdx
+      });
+    }
+  };
   const [previousViewState, setPreviousViewState] = useState<ViewState | null>(null);
   const [instagramViewerData, setInstagramViewerData] = useState<{posts: string[], name: string, initialIndex: number} | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
@@ -996,7 +1045,7 @@ const App: React.FC = () => {
 
   const sortedMarkets = useMemo(() => sortMarketsByOrder(markets), [markets]);
 
-  // One sample product from each market, horizontally scrollable
+  // One random sample product from each market, horizontally scrollable (randomly picks an item for each market)
   const sampleFeaturedProducts = useMemo(() => {
     const list: { product: DiscountProduct; market: MarketData }[] = [];
     const usedMarkets = new Set<string>();
@@ -1006,8 +1055,11 @@ const App: React.FC = () => {
         ? m.catalogs.flatMap(c => c.products || [])
         : (m.products || []);
       
-      const candidate = prods.find(p => p.productName && p.newPrice && p.newPrice !== '---');
-      if (candidate) {
+      const validProducts = prods.filter(p => p.productName && p.newPrice && p.newPrice !== '---');
+      if (validProducts.length > 0) {
+        // Randomly pick one product from this market
+        const randomIndex = Math.floor(Math.random() * validProducts.length);
+        const candidate = validProducts[randomIndex];
         list.push({ product: candidate, market: m });
         usedMarkets.add(m.id);
       }
@@ -1885,52 +1937,102 @@ const App: React.FC = () => {
                       <div className="space-y-6 sm:space-y-8 animate-[fadeIn_0.4s_ease-out] max-w-2xl sm:max-w-3xl mx-auto">
                         {/* Horizontally scrollable row of featured products: 1 product from each market */}
                         {sampleFeaturedProducts.length > 0 && (
-                          <div className="relative group/carousel">
-                            {/* Left scroll arrow (desktop) */}
-                            <button
-                              type="button"
-                              onClick={() => scrollFeaturedCarousel('left')}
-                              className="hidden md:flex absolute -left-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                              title="Əvvəlki"
-                            >
-                              <ChevronLeft className="w-4 h-4" />
-                            </button>
-
-                            <div 
-                              ref={featuredCarouselRef}
-                              className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide scroll-smooth py-1 px-0.5"
-                            >
-                              {sampleFeaturedProducts.map(({ product, market }, idx) => (
-                                <div 
-                                  key={`sample-hero-${market.id}-${idx}`}
-                                  className="w-[calc((100%-16px)/3)] min-w-[110px] sm:min-w-[140px] md:min-w-[160px] max-w-[190px] shrink-0"
-                                >
-                                  <ProductCard
-                                    product={product}
-                                    accentColor={market.themeColor || 'green'}
-                                    marketLogoUrl={market.logoUrl}
-                                    marketName={market.name}
-                                    catalogEndDate={market.catalogs?.[0]?.endDate}
-                                    hideCountdown={true}
-                                    isAdmin={isAdmin}
-                                    variant="compact"
-                                    onClick={() => !isAdmin && setViewProduct({ product, marketName: market.name, catalogEndDate: market.catalogs?.[0]?.endDate })}
-                                    isFavorite={isFavorite(product.productName || '', market.id)}
-                                    onToggleFavorite={() => toggleFavorite(product, market.id)}
+                          <div className="space-y-2">
+                            {/* Dots Indicator Above the Carousel */}
+                            <div className="flex items-center justify-center gap-1.5 py-1 select-none">
+                              {sampleFeaturedProducts.map((_, dotIdx) => {
+                                // Visible window is typically 3 products on mobile/tablet
+                                const isVisibleInWindow = dotIdx >= carouselActiveIndex && dotIdx < carouselActiveIndex + 3;
+                                return (
+                                  <button
+                                    key={`carousel-dot-${dotIdx}`}
+                                    type="button"
+                                    onClick={() => {
+                                      if (featuredCarouselRef.current) {
+                                        const el = featuredCarouselRef.current;
+                                        const firstChild = el.firstElementChild as HTMLElement | null;
+                                        const itemWidth = firstChild ? firstChild.offsetWidth + 8 : 150;
+                                        el.scrollTo({
+                                          left: dotIdx * itemWidth,
+                                          behavior: 'smooth'
+                                        });
+                                      }
+                                    }}
+                                    className={`h-2 rounded-full transition-all duration-200 cursor-pointer ${
+                                      isVisibleInWindow
+                                        ? 'w-5 bg-blue-600 shadow-xs'
+                                        : 'w-2 bg-gray-300 hover:bg-gray-400'
+                                    }`}
+                                    title={`${dotIdx + 1}-ci nümunə məhsul`}
                                   />
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
 
-                            {/* Right scroll arrow (desktop) */}
-                            <button
-                              type="button"
-                              onClick={() => scrollFeaturedCarousel('right')}
-                              className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                              title="Növbəti"
-                            >
-                              <ChevronRight className="w-4 h-4" />
-                            </button>
+                            <div className="relative group/carousel">
+                              {/* Left scroll arrow (desktop) */}
+                              <button
+                                type="button"
+                                onClick={() => scrollFeaturedCarousel('left')}
+                                className="hidden md:flex absolute -left-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                                title="Əvvəlki"
+                              >
+                                <ChevronLeft className="w-4 h-4" />
+                              </button>
+
+                              <div 
+                                ref={featuredCarouselRef}
+                                onScroll={handleCarouselScroll}
+                                className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide scroll-smooth py-1 px-0.5"
+                              >
+                                {sampleFeaturedProducts.map(({ product, market }, idx) => (
+                                  <div 
+                                    key={`sample-hero-${market.id}-${idx}`}
+                                    className="w-[calc((100%-16px)/3)] min-w-[110px] sm:min-w-[140px] md:min-w-[160px] max-w-[190px] shrink-0"
+                                  >
+                                    <ProductCard
+                                      product={product}
+                                      accentColor={market.themeColor || 'green'}
+                                      marketLogoUrl={market.logoUrl}
+                                      marketName={market.name}
+                                      showMarketRibbon={true}
+                                      catalogEndDate={market.catalogs?.[0]?.endDate}
+                                      hideCountdown={true}
+                                      isAdmin={isAdmin}
+                                      variant="compact"
+                                      onClick={() => {
+                                        if (!isAdmin) {
+                                          const featuredList = sampleFeaturedProducts.map(s => ({
+                                            product: s.product,
+                                            marketName: s.market.name,
+                                            catalogEndDate: s.market.catalogs?.[0]?.endDate
+                                          }));
+                                          setViewProduct({ 
+                                            product, 
+                                            marketName: market.name, 
+                                            catalogEndDate: market.catalogs?.[0]?.endDate,
+                                            productList: featuredList,
+                                            currentIndex: idx
+                                          });
+                                        }
+                                      }}
+                                      isFavorite={isFavorite(product.productName || '', market.id)}
+                                      onToggleFavorite={() => toggleFavorite(product, market.id)}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Right scroll arrow (desktop) */}
+                              <button
+                                type="button"
+                                onClick={() => scrollFeaturedCarousel('right')}
+                                className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                                title="Növbəti"
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
                         )}
 
@@ -2195,7 +2297,22 @@ const App: React.FC = () => {
                                             isAdmin={isAdmin} 
                                             variant="compact"
                                             hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
-                                            onClick={() => !isAdmin && setViewProduct({ product, marketName: mkt.name, catalogEndDate: mktCatalog?.endDate })} 
+                                            onClick={() => {
+                                              if (!isAdmin) {
+                                                const mktList = displayedProducts.map(p => ({
+                                                  product: p,
+                                                  marketName: mkt.name,
+                                                  catalogEndDate: mktCatalog?.endDate
+                                                }));
+                                                setViewProduct({ 
+                                                  product, 
+                                                  marketName: mkt.name, 
+                                                  catalogEndDate: mktCatalog?.endDate,
+                                                  productList: mktList,
+                                                  currentIndex: idx
+                                                });
+                                              }
+                                            }} 
                                             onEdit={() => { setActiveMarketId(mkt.id); setProductToEdit({ product, index: idx, catalogId: selectedCatId || undefined }); }} 
                                             isFavorite={isFavorite(product.productName || '', mkt.id)} 
                                             onToggleFavorite={() => toggleFavorite(product, mkt.id)} 
@@ -2300,7 +2417,7 @@ const App: React.FC = () => {
                                               )}
                                             </div>
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3.5 md:gap-4">
-                                              {group.products.map(({ product, originalIndex }) => (
+                                              {group.products.map(({ product, originalIndex }, pIdx) => (
                                                 <ProductCard 
                                                   key={`${mkt.id}-${product.productName}-${originalIndex}`} 
                                                   product={product} 
@@ -2309,7 +2426,22 @@ const App: React.FC = () => {
                                                   isAdmin={isAdmin} 
                                                   variant="compact"
                                                   hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
-                                                  onClick={() => !isAdmin && setViewProduct({ product, marketName: mkt.name, catalogEndDate: mktCatalog?.endDate })} 
+                                                  onClick={() => {
+                                                    if (!isAdmin) {
+                                                      const groupList = group.products.map(p => ({
+                                                        product: p.product,
+                                                        marketName: mkt.name,
+                                                        catalogEndDate: mktCatalog?.endDate
+                                                      }));
+                                                      setViewProduct({ 
+                                                        product, 
+                                                        marketName: mkt.name, 
+                                                        catalogEndDate: mktCatalog?.endDate,
+                                                        productList: groupList,
+                                                        currentIndex: pIdx
+                                                      });
+                                                    }
+                                                  }} 
                                                   onEdit={() => { setActiveMarketId(mkt.id); setProductToEdit({ product, index: originalIndex, catalogId: selectedCatId || undefined }); }} 
                                                   isFavorite={isFavorite(product.productName || '', mkt.id)} 
                                                   onToggleFavorite={() => toggleFavorite(product, mkt.id)} 
@@ -2332,7 +2464,22 @@ const App: React.FC = () => {
                                         isAdmin={isAdmin} 
                                         variant="compact"
                                         hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
-                                        onClick={() => !isAdmin && setViewProduct({ product, marketName: mkt.name, catalogEndDate: mktCatalog?.endDate })} 
+                                        onClick={() => {
+                                          if (!isAdmin) {
+                                            const mktList = displayedProducts.map(p => ({
+                                              product: p,
+                                              marketName: mkt.name,
+                                              catalogEndDate: mktCatalog?.endDate
+                                            }));
+                                            setViewProduct({ 
+                                              product, 
+                                              marketName: mkt.name, 
+                                              catalogEndDate: mktCatalog?.endDate,
+                                              productList: mktList,
+                                              currentIndex: index
+                                            });
+                                          }
+                                        }} 
                                         onEdit={() => { setActiveMarketId(mkt.id); setProductToEdit({ product, index, catalogId: selectedCatId || undefined }); }} 
                                         isFavorite={isFavorite(product.productName || '', mkt.id)} 
                                         onToggleFavorite={() => toggleFavorite(product, mkt.id)} 
@@ -2393,7 +2540,22 @@ const App: React.FC = () => {
         {marketToEdit && <EditMarketModal isOpen={!!marketToEdit} onClose={() => setMarketToEdit(null)} market={marketToEdit} onSave={handleUpdateMarket} onDelete={handleDeleteMarket} />}
         {productToEdit && activeMarketId && <EditProductModal isOpen={!!productToEdit} onClose={() => setProductToEdit(null)} product={productToEdit.product} onSave={handleUpdateProduct} />}
         <DatabaseModal isOpen={isDatabaseModalOpen} onClose={() => setIsDatabaseModalOpen(false)} onSave={saveDatabaseConfig} currentConfig={supabaseConfig} />
-        <ProductDetailModal isOpen={!!viewProduct} onClose={() => setViewProduct(null)} product={viewProduct?.product || null} marketName={viewProduct?.marketName || ''} allMarkets={markets} onCompareClick={handleCompareClick} canGoBack={!!previousViewState} onBack={handleRestorePreviousView} showComparisons={showCheaperOnly} catalogEndDate={viewProduct?.catalogEndDate} />
+        <ProductDetailModal 
+          isOpen={!!viewProduct} 
+          onClose={() => setViewProduct(null)} 
+          product={viewProduct?.product || null} 
+          marketName={viewProduct?.marketName || ''} 
+          allMarkets={markets} 
+          onCompareClick={handleCompareClick} 
+          canGoBack={!!previousViewState} 
+          onBack={handleRestorePreviousView} 
+          showComparisons={showCheaperOnly} 
+          catalogEndDate={viewProduct?.catalogEndDate} 
+          onPrev={handlePrevProductInModal}
+          onNext={handleNextProductInModal}
+          hasPrev={Boolean(viewProduct?.productList && viewProduct.currentIndex !== undefined && viewProduct.currentIndex > 0)}
+          hasNext={Boolean(viewProduct?.productList && viewProduct.currentIndex !== undefined && viewProduct.currentIndex < viewProduct.productList.length - 1)}
+        />
         
         <InstagramViewer 
           isOpen={!!instagramViewerData} 

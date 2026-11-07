@@ -35,6 +35,7 @@ interface ProductCardProps {
   onToggleFavorite?: () => void;
   marketLogoUrl?: string;
   marketName?: string;
+  showMarketRibbon?: boolean;
 }
 
 export interface CleanProductInfo {
@@ -282,7 +283,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   isFavorite,
   onToggleFavorite,
   marketLogoUrl,
-  marketName
+  marketName,
+  showMarketRibbon = false
 }) => {
   const [imageError, setImageError] = useState(false);
   const isMini = variant === 'mini';
@@ -294,75 +296,100 @@ const ProductCard: React.FC<ProductCardProps> = ({
     ? product.customImageUrl 
     : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(product.productName + ' product')}&w=200&h=200&c=7&rs=1&p=0`;
 
+  const formattedMarketName = marketName 
+    ? marketName.replace(/\s+market$/i, '').trim().toLowerCase().replace(/^\w/, c => c.toUpperCase())
+    : '';
+
   return (
-    <div 
-      id={id}
-      onClick={onClick}
-      className={`
-      bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300 flex flex-col h-full group relative cursor-pointer
-      shadow-2xs hover:shadow-xs border border-gray-100 hover:border-${accentColor}-200
-      ${isHighlighted ? 'ring-4 ring-yellow-400 ring-offset-2 scale-105 z-10' : ''}
-    `}>
-      
-      {/* Top Right: Heart / Favorite Button */}
-      {!isAdmin && onToggleFavorite && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleFavorite();
-          }}
-          className={`absolute z-30 transition-colors top-1 right-1 text-gray-300 hover:text-red-500 ${isMini ? 'p-1' : 'p-1.5'}`}
-          title={isFavorite ? "Yadda saxlanılanlardan çıxar" : "Yadda saxla"}
+    <div className={`relative flex flex-col h-full ${showMarketRibbon ? 'pt-6 sm:pt-7' : ''}`}>
+      {/* Market Name Tab - Protruding exactly flush with left border like in user attachment */}
+      {showMarketRibbon && formattedMarketName && (
+        <div 
+          className="absolute top-0 left-0 z-20 bg-[#161c28] text-white pl-2 pr-3 sm:pr-3.5 py-1 sm:py-1.5 rounded-t-xl shadow-xs flex items-center gap-1.5 sm:gap-2 pointer-events-none select-none max-w-[85%]"
+          title={marketName}
         >
-          <Heart 
-            className={`${isMini ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : "w-4 h-4 sm:w-5 sm:h-5"} ${isFavorite ? "fill-red-500 text-red-500" : "hover:text-red-400"} drop-shadow-xs`} 
-            strokeWidth={2} 
-          />
-        </button>
+          {marketLogoUrl ? (
+            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-xs p-0.5">
+              <img src={marketLogoUrl} alt="" className="w-full h-full object-contain" />
+            </div>
+          ) : (
+            <span className={`w-2 h-2 rounded-full bg-${accentColor}-400 shrink-0`}></span>
+          )}
+          <span className="text-[11px] sm:text-[13px] font-black tracking-tight text-white whitespace-nowrap">
+            {formattedMarketName}
+          </span>
+        </div>
       )}
 
-      {isAdmin && (
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onEdit) onEdit();
-          }}
-          className="absolute z-20 bg-white/90 rounded-full shadow-xs text-gray-500 hover:text-blue-600 border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity top-1 left-1 p-0.5 sm:p-1"
-        >
-          <Edit2 className={isMini ? "w-2.5 h-2.5 sm:w-3 sm:h-3" : "w-3 h-3"} />
-        </button>
-      )}
-
-      {/* Product Image Container - Reduced image height (aspect-[4/3]) */}
-      <div className="aspect-[4/3] w-full relative overflow-hidden bg-gray-50 flex items-center justify-center">
-        {!imageError ? (
-          <img 
-            src={imageUrl} 
-            alt={cleanName}
-            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-            onError={() => setImageError(true)}
-            loading="lazy"
-          />
-        ) : (
-          <div className={`w-full h-full flex items-center justify-center bg-${accentColor}-50 flex-col gap-1 text-${accentColor}-300`}>
-            {getCategoryIcon(product.category, true)}
-          </div>
-        )}
-
-        {/* Top Left: Market Logo Icon (when provided) */}
-        {marketLogoUrl && (
-          <div 
-            className="absolute top-1.5 left-1.5 z-20 w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden pointer-events-none"
-            title={marketName || "Market"}
-          >
-            <img src={marketLogoUrl} alt={marketName || "Market"} className="w-full h-full object-contain" />
-          </div>
-        )}
+      <div 
+        id={id}
+        onClick={onClick}
+        className={`
+        bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300 flex flex-col h-full group relative cursor-pointer
+        shadow-2xs hover:shadow-xs border border-gray-100 hover:border-${accentColor}-200
+        ${showMarketRibbon ? 'rounded-tl-none' : ''}
+        ${isHighlighted ? 'ring-4 ring-yellow-400 ring-offset-2 scale-105 z-10' : ''}
+      `}>
         
-        {/* Discount Percentage Badge (Top-left if no market logo, or bottom-left if market logo present) */}
+        {/* Top Right: Heart / Favorite Button */}
+        {!isAdmin && onToggleFavorite && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            className={`absolute z-30 transition-colors top-1 right-1 text-gray-300 hover:text-red-500 ${isMini ? 'p-1' : 'p-1.5'}`}
+            title={isFavorite ? "Yadda saxlanılanlardan çıxar" : "Yadda saxla"}
+          >
+            <Heart 
+              className={`${isMini ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : "w-4 h-4 sm:w-5 sm:h-5"} ${isFavorite ? "fill-red-500 text-red-500" : "hover:text-red-400"} drop-shadow-xs`} 
+              strokeWidth={2} 
+            />
+          </button>
+        )}
+
+        {isAdmin && (
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onEdit) onEdit();
+            }}
+            className="absolute z-20 bg-white/90 rounded-full shadow-xs text-gray-500 hover:text-blue-600 border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity top-1 left-1 p-0.5 sm:p-1"
+          >
+            <Edit2 className={isMini ? "w-2.5 h-2.5 sm:w-3 sm:h-3" : "w-3 h-3"} />
+          </button>
+        )}
+
+        {/* Product Image Container - Reduced image height (aspect-[4/3]) */}
+        <div className="aspect-[4/3] w-full relative overflow-hidden bg-gray-50 flex items-center justify-center">
+          {!imageError ? (
+            <img 
+              src={imageUrl} 
+              alt={cleanName}
+              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+              onError={() => setImageError(true)}
+              loading="lazy"
+            />
+          ) : (
+            <div className={`w-full h-full flex items-center justify-center bg-${accentColor}-50 flex-col gap-1 text-${accentColor}-300`}>
+              {getCategoryIcon(product.category, true)}
+            </div>
+          )}
+
+          {/* Top Left: Market Logo Icon (when not using protruding tab) */}
+          {!showMarketRibbon && marketLogoUrl && (
+            <div 
+              className="absolute top-1.5 left-1.5 z-20 w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden pointer-events-none"
+              title={marketName || "Market"}
+            >
+              <img src={marketLogoUrl} alt={marketName || "Market"} className="w-full h-full object-contain" />
+            </div>
+          )}
+        
+        {/* Discount Percentage Badge */}
         {product.discountPercentage && (
           <div className={`
-            absolute ${marketLogoUrl ? 'bottom-1.5 left-1.5' : 'top-0 left-0'} bg-emerald-600 text-white font-bold rounded shadow-xs flex items-center z-10
+            absolute ${(!showMarketRibbon && marketLogoUrl) ? 'bottom-1.5 left-1.5' : 'top-1.5 left-1.5'} bg-emerald-600 text-white font-bold rounded shadow-xs flex items-center z-10
             ${isMini ? 'text-[7.5px] sm:text-[8.5px] px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
           `}>
             {product.discountPercentage}
@@ -440,6 +467,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         </div>
       </div>
     </div>
+  </div>
   );
 };
 

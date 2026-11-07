@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { X, ArrowLeft, CheckCircle2, TrendingDown, ArrowRight, ShoppingCart, Clock, Calendar } from 'lucide-react';
 import { DiscountProduct, MarketData } from '../types';
 import { parseDateString, extractProductEndDate, calculateDaysLeft, extractQuantityAndCleanName } from './ProductCard';
@@ -15,6 +15,10 @@ interface ProductDetailModalProps {
   onBack?: () => void;
   showComparisons?: boolean; // New prop to control visibility of comparison list
   catalogEndDate?: string;
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 }
 
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ 
@@ -27,9 +31,34 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   canGoBack,
   onBack,
   showComparisons = false,
-  catalogEndDate
+  catalogEndDate,
+  onPrev,
+  onNext,
+  hasPrev = false,
+  hasNext = false
 }) => {
-  if (!isOpen || !product) return null;
+  // Touch and mouse drag swipe support for switching products (Hooks must always run unconditionally at the top)
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const touchEndY = useRef<number | null>(null);
+  const isMouseDown = useRef<boolean>(false);
+
+  // Keyboard navigation (ArrowLeft & ArrowRight)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' && hasNext && onNext) {
+        onNext();
+      } else if (e.key === 'ArrowLeft' && hasPrev && onPrev) {
+        onPrev();
+      } else if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, hasNext, hasPrev, onNext, onPrev, onClose]);
 
   const parsePriceNumber = (val: any): number => {
     if (val === null || val === undefined) return NaN;
@@ -125,6 +154,61 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     return `${day}.${month}.${year}`;
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+    touchStartY.current = e.targetTouches[0].clientY;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+    touchEndY.current = e.targetTouches[0].clientY;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current === null || touchEndX.current === null) return;
+    const diffX = touchStartX.current - touchEndX.current;
+    const diffY = (touchStartY.current !== null && touchEndY.current !== null)
+      ? Math.abs(touchStartY.current - touchEndY.current)
+      : 0;
+    
+    // Only trigger horizontal swipe if horizontal movement is dominant
+    const minSwipeDistance = 35;
+    if (Math.abs(diffX) > minSwipeDistance && Math.abs(diffX) > diffY * 0.7) {
+      if (diffX > 0 && hasNext && onNext) {
+        // Swiped left -> show next product
+        onNext();
+      } else if (diffX < 0 && hasPrev && onPrev) {
+        // Swiped right -> show previous product
+        onPrev();
+      }
+    }
+
+    touchStartX.current = null;
+    touchEndX.current = null;
+    touchStartY.current = null;
+    touchEndY.current = null;
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    isMouseDown.current = true;
+    touchStartX.current = e.clientX;
+    touchStartY.current = e.clientY;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDown.current) return;
+    touchEndX.current = e.clientX;
+    touchEndY.current = e.clientY;
+  };
+
+  const handleMouseUp = () => {
+    if (!isMouseDown.current) return;
+    isMouseDown.current = false;
+    handleTouchEnd();
+  };
+
+  if (!isOpen || !product) return null;
+
   const effectiveEndDate = extractProductEndDate(product, catalogEndDate);
   const countdownInfo = calculateDaysLeft(effectiveEndDate);
   const formattedEndDate = countdownInfo?.formattedDate || formatEndDate(effectiveEndDate);
@@ -137,20 +221,79 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(product.productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 select-none">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
 
-      {/* Modal Container - Centered */}
-      <div className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden animate-[fadeIn_0.2s_ease-out] max-h-[90vh]">
+      {/* Prev Button (Desktop / Tablet floating outside) */}
+      {hasPrev && onPrev && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onPrev(); }}
+          className="hidden sm:flex fixed left-4 md:left-8 top-1/2 -translate-y-1/2 z-[110] w-12 h-12 rounded-full bg-white/90 hover:bg-white text-gray-800 shadow-xl items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer border border-gray-100"
+          title="Əvvəlki məhsul"
+        >
+          <ArrowLeft className="w-6 h-6 stroke-[2.5]" />
+        </button>
+      )}
+
+      {/* Next Button (Desktop / Tablet floating outside) */}
+      {hasNext && onNext && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onNext(); }}
+          className="hidden sm:flex fixed right-4 md:right-8 top-1/2 -translate-y-1/2 z-[110] w-12 h-12 rounded-full bg-white/90 hover:bg-white text-gray-800 shadow-xl items-center justify-center transition-all hover:scale-110 active:scale-95 cursor-pointer border border-gray-100"
+          title="Növbəti məhsul"
+        >
+          <ArrowRight className="w-6 h-6 stroke-[2.5]" />
+        </button>
+      )}
+
+      {/* Modal Container - Centered, touch and mouse swipe gesture enabled */}
+      <div 
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden animate-[fadeIn_0.2s_ease-out] max-h-[90vh] z-10 touch-pan-y"
+      >
         
-        {/* Header Image */}
-        <div className="relative w-full h-48 bg-gray-50 flex items-center justify-center shrink-0">
+        {/* Header Image - Primary swipe target */}
+        <div 
+          className="relative w-full h-48 bg-gray-50 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing select-none"
+        >
             <img 
               src={imageUrl} 
               alt={cleanName} 
-              className="w-40 h-40 object-contain mix-blend-multiply"
+              draggable={false}
+              className="w-40 h-40 object-contain mix-blend-multiply transition-all duration-200 pointer-events-none select-none"
             />
+
+            {/* Mobile swipe overlay indicators */}
+            {hasPrev && onPrev && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onPrev(); }}
+                className="sm:hidden absolute left-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/85 text-gray-700 shadow-md flex items-center justify-center"
+                title="Əvvəlki məhsul"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+
+            {hasNext && onNext && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onNext(); }}
+                className="sm:hidden absolute right-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/85 text-gray-700 shadow-md flex items-center justify-center"
+                title="Növbəti məhsul"
+              >
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
             
             {/* Back Button */}
             {canGoBack && onBack && (
