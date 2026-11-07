@@ -301,21 +301,15 @@ const ProductCard: React.FC<ProductCardProps> = ({
     : '';
 
   return (
-    <div className={`relative flex flex-col h-full ${showMarketRibbon ? 'pt-6 sm:pt-7' : ''}`}>
-      {/* Market Name Tab - Protruding exactly flush with left border like in user attachment */}
+    <div className={`relative flex flex-col h-full ${showMarketRibbon ? 'pt-5 sm:pt-5.5' : ''}`}>
+      {/* Market Name Tab - Sits UNDER the card (z-0), protruding with equal top & bottom padding */}
       {showMarketRibbon && formattedMarketName && (
         <div 
-          className="absolute top-0 left-0 z-20 bg-[#161c28] text-white pl-2 pr-3 sm:pr-3.5 py-1 sm:py-1.5 rounded-t-xl shadow-xs flex items-center gap-1.5 sm:gap-2 pointer-events-none select-none max-w-[85%]"
+          className="absolute top-0 left-0 z-0 bg-[#161c28] text-white px-2.5 sm:px-3 pt-0.5 pb-2 rounded-t-lg sm:rounded-t-xl flex items-center justify-center pointer-events-none select-none max-w-[85%]"
+          style={{ height: '28px' }}
           title={marketName}
         >
-          {marketLogoUrl ? (
-            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-xs p-0.5">
-              <img src={marketLogoUrl} alt="" className="w-full h-full object-contain" />
-            </div>
-          ) : (
-            <span className={`w-2 h-2 rounded-full bg-${accentColor}-400 shrink-0`}></span>
-          )}
-          <span className="text-[11px] sm:text-[13px] font-black tracking-tight text-white whitespace-nowrap">
+          <span className="text-[11px] sm:text-xs font-black tracking-tight text-white whitespace-nowrap leading-none">
             {formattedMarketName}
           </span>
         </div>
@@ -325,10 +319,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
         id={id}
         onClick={onClick}
         className={`
-        bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300 flex flex-col h-full group relative cursor-pointer
+        bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300 flex flex-col h-full group relative cursor-pointer z-10
         shadow-2xs hover:shadow-xs border border-gray-100 hover:border-${accentColor}-200
-        ${showMarketRibbon ? 'rounded-tl-none' : ''}
-        ${isHighlighted ? 'ring-4 ring-yellow-400 ring-offset-2 scale-105 z-10' : ''}
+        ${isHighlighted ? 'ring-4 ring-yellow-400 ring-offset-2 scale-105 z-20' : ''}
       `}>
         
         {/* Top Right: Heart / Favorite Button */}
@@ -338,7 +331,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
               e.stopPropagation();
               onToggleFavorite();
             }}
-            className={`absolute z-30 transition-colors top-1 right-1 text-gray-300 hover:text-red-500 ${isMini ? 'p-1' : 'p-1.5'}`}
+            className={`absolute z-30 transition-colors top-1.5 right-1.5 text-gray-300 hover:text-red-500 ${isMini ? 'p-1' : 'p-1.5'}`}
             title={isFavorite ? "Yadda saxlanılanlardan çıxar" : "Yadda saxla"}
           >
             <Heart 
@@ -354,7 +347,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
               e.stopPropagation();
               if (onEdit) onEdit();
             }}
-            className="absolute z-20 bg-white/90 rounded-full shadow-xs text-gray-500 hover:text-blue-600 border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity top-1 left-1 p-0.5 sm:p-1"
+            className="absolute z-20 bg-white/90 rounded-full shadow-xs text-gray-500 hover:text-blue-600 border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity top-1.5 left-1.5 p-0.5 sm:p-1"
           >
             <Edit2 className={isMini ? "w-2.5 h-2.5 sm:w-3 sm:h-3" : "w-3 h-3"} />
           </button>
@@ -376,8 +369,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
 
-          {/* Top Left: Market Logo Icon (when not using protruding tab) */}
-          {!showMarketRibbon && marketLogoUrl && (
+          {/* Top Left: Market Logo Icon on top of the image as before */}
+          {marketLogoUrl && (
             <div 
               className="absolute top-1.5 left-1.5 z-20 w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden pointer-events-none"
               title={marketName || "Market"}
@@ -389,7 +382,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Discount Percentage Badge */}
         {product.discountPercentage && (
           <div className={`
-            absolute ${(!showMarketRibbon && marketLogoUrl) ? 'bottom-1.5 left-1.5' : 'top-1.5 left-1.5'} bg-emerald-600 text-white font-bold rounded shadow-xs flex items-center z-10
+            absolute ${marketLogoUrl ? 'bottom-1.5 left-1.5' : 'top-1.5 left-1.5'} bg-emerald-600 text-white font-bold rounded shadow-xs flex items-center z-10
             ${isMini ? 'text-[7.5px] sm:text-[8.5px] px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
           `}>
             {product.discountPercentage}
