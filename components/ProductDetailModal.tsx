@@ -56,8 +56,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   const startY = useRef<number | null>(null);
   const currentY = useRef<number | null>(null);
+  const startTime = useRef<number>(0);
   const isMouseDown = useRef<boolean>(false);
-  const isTouchOnScrollable = useRef<boolean>(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const rootWrapperRef = useRef<HTMLDivElement | null>(null);
   const isTransitioning = useRef<boolean>(false);
@@ -86,13 +86,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     if (!el || !isOpen) return;
 
     const preventBackdropScroll = (e: TouchEvent) => {
-      const target = e.target as HTMLElement;
-      if (scrollContainerRef.current && scrollContainerRef.current.contains(target)) {
-        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-        const diff = currentY.current !== null && startY.current !== null ? currentY.current - startY.current : 0;
-        if (diff > 0 && scrollTop > 0) return;
-        if (diff < 0 && scrollTop + clientHeight < scrollHeight - 4) return;
-      }
       if (e.cancelable) {
         e.preventDefault();
       }
@@ -197,6 +190,16 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     return true;
   }, [product, allMarkets]);
 
+  // Derived current market object for logo and theme color
+  const currentMarket = useMemo(() => {
+    if (!allMarkets || allMarkets.length === 0) return null;
+    const lowerName = (marketName || '').trim().toLowerCase();
+    return allMarkets.find(m => 
+      m.name.trim().toLowerCase() === lowerName || 
+      m.id === (product as any)?.marketId
+    );
+  }, [allMarkets, marketName, product]);
+
   // --- COMPARISON LIST GENERATION ---
   const comparisonData = useMemo(() => {
     if (!showComparisons || !product) return [];
@@ -259,20 +262,13 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     return `${day}.${month}.${year}`;
   };
 
-  // Touch handlers for vertical TikTok-style full-window swipe
+  // Touch handlers for vertical TikTok-style full-window swipe (ultra-responsive, flick-enabled)
   const handleTouchStart = (e: React.TouchEvent) => {
     if (isTransitioning.current) return;
     const touch = e.touches[0];
     startY.current = touch.clientY;
     currentY.current = touch.clientY;
-
-    const target = e.target as HTMLElement;
-    const scrollContainer = scrollContainerRef.current;
-    if (scrollContainer && scrollContainer.contains(target)) {
-      isTouchOnScrollable.current = true;
-    } else {
-      isTouchOnScrollable.current = false;
-    }
+    startTime.current = Date.now();
     setIsDragging(true);
   };
 
@@ -282,24 +278,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     currentY.current = touch.clientY;
     const diff = currentY.current - startY.current;
 
-    // Disambiguate with internal scrolling if touch started in scrollable area
-    if (isTouchOnScrollable.current && scrollContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-      // If user scrolls down and scrollTop > 0, let internal content scroll
-      if (diff > 0 && scrollTop > 0) {
-        setDragY(0);
-        return;
-      }
-      // If user scrolls up and not yet at end of content, let internal content scroll
-      if (diff < 0 && scrollTop + clientHeight < scrollHeight - 6) {
-        setDragY(0);
-        return;
-      }
-    }
-
-    // Apply drag offset with pleasant physical damping
-    const resistance = Math.abs(diff) > 100 ? 0.65 : 0.85;
-    setDragY(diff * resistance);
+    // Direct 1:1 tactile movement so the card instantly tracks the finger without resistance
+    setDragY(diff);
   };
 
   const handleTouchEnd = () => {
@@ -310,16 +290,24 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
 
     const diff = currentY.current - startY.current;
-    const swipeThreshold = 50;
+    const elapsed = Math.max(Date.now() - (startTime.current || Date.now()), 1);
+    const velocity = Math.abs(diff) / elapsed; // px per millisecond
 
-    if (diff < -swipeThreshold && hasNext) {
+    // TikTok-style easy triggering:
+    // 1) Quick flick: moved >= 14px with velocity >= 0.18 px/ms (light swift flick of the thumb)
+    // 2) Light swipe: moved >= 24px in either direction
+    const isQuickFlick = velocity >= 0.18 && Math.abs(diff) >= 14;
+    const isLightSwipe = Math.abs(diff) >= 24;
+    const shouldTrigger = isQuickFlick || isLightSwipe;
+
+    if (diff < 0 && shouldTrigger && hasNext) {
       // Swiped UP -> Show Next Product (TikTok style)
       triggerNext();
-    } else if (diff > swipeThreshold && hasPrev) {
+    } else if (diff > 0 && shouldTrigger && hasPrev) {
       // Swiped DOWN -> Show Previous Product
       triggerPrev();
-    } else if (diff > 140 && !hasPrev) {
-      // Pulled far down at top -> dismiss modal
+    } else if (diff > 75 && !hasPrev) {
+      // Pulled down at top of list -> dismiss modal
       onClose();
     } else {
       // Spring back to default center
@@ -329,7 +317,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     setIsDragging(false);
     startY.current = null;
     currentY.current = null;
-    isTouchOnScrollable.current = false;
   };
 
   // Mouse drag handlers for desktop support
@@ -341,12 +328,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     isMouseDown.current = true;
     startY.current = e.clientY;
     currentY.current = e.clientY;
-
-    if (scrollContainerRef.current && scrollContainerRef.current.contains(target)) {
-      isTouchOnScrollable.current = true;
-    } else {
-      isTouchOnScrollable.current = false;
-    }
+    startTime.current = Date.now();
     setIsDragging(true);
   };
 
@@ -354,15 +336,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     if (!isMouseDown.current || startY.current === null || isTransitioning.current) return;
     currentY.current = e.clientY;
     const diff = currentY.current - startY.current;
-
-    if (isTouchOnScrollable.current && scrollContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-      if (diff > 0 && scrollTop > 0) return;
-      if (diff < 0 && scrollTop + clientHeight < scrollHeight - 6) return;
-    }
-
-    const resistance = Math.abs(diff) > 100 ? 0.65 : 0.85;
-    setDragY(diff * resistance);
+    setDragY(diff);
   };
 
   const handleMouseUp = () => {
@@ -477,8 +451,64 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       >
         
         {/* TikTok Drag Handle Pill at the very top */}
-        <div className="w-full flex items-center justify-center pt-2 pb-0.5 bg-gray-50/80 cursor-grab active:cursor-grabbing">
+        <div className="w-full flex items-center justify-center pt-2 pb-1 bg-white cursor-grab active:cursor-grabbing">
           <div className="w-10 h-1 rounded-full bg-gray-300" />
+        </div>
+
+        {/* Modal Top Header Bar: Market Logo & Name on Left, Product Counter & Close on Right */}
+        <div className="w-full px-3.5 py-2 bg-white border-b border-gray-100 flex items-center justify-between gap-2 z-20 shrink-0">
+          {/* Left: Back button (if available) + Market Logo + Market Name */}
+          <div className="flex items-center gap-2 min-w-0">
+            {canGoBack && onBack && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); onBack(); }}
+                className="p-1 -ml-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors shrink-0"
+                title="Geri"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Market Logo */}
+            {currentMarket?.logoUrl ? (
+              <img 
+                src={currentMarket.logoUrl} 
+                alt={marketName} 
+                className="w-6 h-6 sm:w-7 sm:h-7 object-contain rounded-full bg-white p-0.5 border border-gray-200/90 shadow-2xs shrink-0" 
+              />
+            ) : (
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-emerald-100 text-emerald-800 font-black text-xs flex items-center justify-center border border-gray-200/90 shadow-2xs shrink-0">
+                {currentMarket?.logoPlaceholder || marketName?.charAt(0) || 'M'}
+              </div>
+            )}
+
+            {/* Market Name */}
+            <span className="font-extrabold text-gray-900 text-xs sm:text-sm tracking-tight truncate max-w-[120px] xs:max-w-[150px] sm:max-w-[180px]">
+              {marketName}
+            </span>
+          </div>
+
+          {/* Right: Product Count (e.g. 4/72) + Close Button */}
+          <div className="flex items-center gap-2 shrink-0">
+            {totalCount && totalCount > 0 ? (
+              <div 
+                className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-50 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
+                title={`Məhsul: ${(currentIndex !== undefined ? currentIndex + 1 : 1)} / ${totalCount}`}
+              >
+                <span className="text-emerald-600 font-black">{(currentIndex !== undefined ? currentIndex + 1 : 1)}</span>
+                <span className="text-gray-400 font-semibold">/</span>
+                <span>{totalCount}</span>
+              </div>
+            ) : null}
+
+            <button 
+              onClick={(e) => { e.stopPropagation(); onClose(); }}
+              className="p-1 sm:p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+              title="Bağla"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Header Image - Primary swipe area */}
@@ -515,24 +545,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </button>
             )}
           </div>
-          
-          {/* Back Button */}
-          {canGoBack && onBack && (
-            <button 
-              onClick={(e) => { e.stopPropagation(); onBack(); }}
-              className="absolute top-2.5 left-2.5 p-2 bg-white/85 hover:bg-white rounded-full text-gray-700 shadow-sm transition-all font-medium flex items-center gap-1 text-xs z-10"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-          )}
-
-          {/* Close Button */}
-          <button 
-            onClick={(e) => { e.stopPropagation(); onClose(); }}
-            className="absolute top-2.5 right-2.5 p-2 bg-white/85 hover:bg-red-50 hover:text-red-600 rounded-full text-gray-500 shadow-sm transition-all z-10"
-          >
-            <X className="w-5 h-5" />
-          </button>
 
           {/* Discount Badge */}
           {product.discountPercentage && (
@@ -550,14 +562,16 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         </div>
 
         {/* Product Info Content */}
-        <div ref={scrollContainerRef} className="p-5 sm:p-6 overflow-y-auto cursor-auto touch-pan-y">
+        <div ref={scrollContainerRef} className="p-5 sm:p-6 overflow-y-auto cursor-grab active:cursor-grabbing select-none touch-none">
           <div className="flex items-start justify-between gap-2 mb-2">
-            <span className="inline-block px-2.5 py-1 text-[11px] font-bold text-blue-600 bg-blue-50 rounded-lg uppercase tracking-wider">
-              {marketName}
-            </span>
-            <span className="inline-block px-2.5 py-1 text-[11px] font-bold text-gray-500 bg-gray-100 rounded-lg">
+            <span className="inline-block px-2.5 py-1 text-[11px] font-bold text-gray-600 bg-gray-100 rounded-lg">
               {product.category}
             </span>
+            {isBestPrice && (
+              <span className="inline-block px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded-lg">
+                Ən Sərfəli Qiymət
+              </span>
+            )}
           </div>
           
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 leading-snug mb-3">

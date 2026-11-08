@@ -448,11 +448,11 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
       </div>
 
       {/* Content Area - Enlarged title text and room for product name */}
-      <div className={`${isRowOnMobile ? 'flex-1 min-w-0 pl-3 sm:pl-2.5 p-1 sm:p-2.5 flex flex-col justify-between h-full' : `${isMini ? 'p-1.5 pt-1.5 sm:p-2' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`}`}>
+      <div className={`${isRowOnMobile ? 'flex-1 min-w-0 pl-3.5 sm:pl-2.5 p-1 sm:p-2.5 flex flex-col justify-between h-full' : `${isMini ? 'p-1.5 pt-1.5 sm:p-2' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`}`}>
         <div>
-          <div className={`${isRowOnMobile ? 'min-h-0 sm:min-h-[2.8rem]' : 'min-h-[2.4rem] sm:min-h-[2.8rem]'} flex items-start`}>
+          <div className={`${isRowOnMobile ? 'min-h-0 sm:min-h-[2.8rem] pr-6 sm:pr-0' : 'min-h-[2.4rem] sm:min-h-[2.8rem]'} flex items-start`}>
             <h3 
-              className={`font-bold text-gray-800 line-clamp-2 leading-snug ${isRowOnMobile ? 'text-xs sm:text-[13px] md:text-sm' : isMini ? 'text-[10px] sm:text-[11.5px]' : 'text-xs sm:text-[13px] md:text-sm'}`} 
+              className={`font-bold text-gray-900 line-clamp-2 leading-snug ${isRowOnMobile ? 'text-[14px] xs:text-[15.5px] sm:text-[13px] md:text-sm' : isMini ? 'text-[10px] sm:text-[11.5px]' : 'text-xs sm:text-[13px] md:text-sm'}`} 
               title={product.productName}
             >
               {cleanName}
@@ -470,14 +470,14 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         </div>
         
         {/* Price Row: Bold green current price and line-through old price */}
-        <div className="mt-1.5 pt-1.5 border-t border-gray-100 flex items-center justify-between gap-1">
+        <div className="mt-2 pt-1.5 border-t border-gray-100 flex items-center justify-between gap-1">
           {/* Left: Prices */}
           <div className="flex items-baseline gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden min-w-0">
-            <span className="font-black text-emerald-600 leading-none text-base sm:text-lg shrink-0 whitespace-nowrap">
+            <span className={`font-black text-emerald-600 leading-none ${isRowOnMobile ? 'text-lg xs:text-xl sm:text-lg' : 'text-base sm:text-lg'} shrink-0 whitespace-nowrap`}>
               {product.newPrice} <span className="text-[0.8em] font-bold">₼</span>
             </span>
             {product.oldPrice && product.oldPrice !== '---' && (
-              <span className="text-gray-400 line-through leading-none font-semibold text-xs sm:text-sm shrink-0 whitespace-nowrap">
+              <span className={`text-gray-400 line-through leading-none font-semibold ${isRowOnMobile ? 'text-xs xs:text-sm sm:text-sm' : 'text-xs sm:text-sm'} shrink-0 whitespace-nowrap`}>
                 {product.oldPrice}
               </span>
             )}

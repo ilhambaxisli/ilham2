@@ -1831,7 +1831,7 @@ const App: React.FC = () => {
                     <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{favorites.length} məhsul</span>
                   </div>
                   {favorites.length > 0 ? (
-                    <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4 transition-all duration-300 ${isSearching ? 'blur-sm opacity-60' : ''}`}>
+                    <div className={`grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4 transition-all duration-300 ${isSearching ? 'blur-sm opacity-60' : ''}`}>
                        {favorites.map((product, index) => {
                           const market = markets.find(m => m.id === product.marketId);
                           const marketName = market?.name || 'Naməlum Market';
@@ -1846,6 +1846,7 @@ const App: React.FC = () => {
                                     catalogEndDate={market?.catalogs?.[0]?.endDate}
                                     isAdmin={isAdmin}
                                     variant="compact"
+                                    isRowOnMobile={true}
                                     hasCheaperAlternative={hasCheaper}
                                     onClick={() => {
                                       if (!isAdmin) {
@@ -1957,7 +1958,7 @@ const App: React.FC = () => {
                                         {market.filteredProducts.length} məhsul
                                       </span>
                                     </div>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4">
                                     {market.filteredProducts.slice(0, visibleProductCount).map((product, index) => {
                                         const fav = isFavorite(product.productName || '', market.id);
                                         return (
@@ -1968,6 +1969,7 @@ const App: React.FC = () => {
                                             catalogEndDate={marketEndDate}
                                             isAdmin={isAdmin} 
                                             variant="compact" 
+                                            isRowOnMobile={true}
                                             hasCheaperAlternative={(product as any)._hasCheaper} 
                                             onClick={() => {
                                               if (!isAdmin) {
