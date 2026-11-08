@@ -36,6 +36,7 @@ interface ProductCardProps {
   marketLogoUrl?: string;
   marketName?: string;
   showMarketRibbon?: boolean;
+  isRowOnMobile?: boolean;
 }
 
 export interface CleanProductInfo {
@@ -284,13 +285,52 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onToggleFavorite,
   marketLogoUrl,
   marketName,
-  showMarketRibbon = false
+  showMarketRibbon = false,
+  isRowOnMobile = false
 }) => {
   const [imageError, setImageError] = useState(false);
   const isMini = variant === 'mini';
   const isCompact = variant === 'compact' || isMini;
 
   const { cleanName, quantity: quantityBadge } = extractQuantityAndCleanName(product.productName);
+
+const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
+  const n = (name || '').toLowerCase().trim();
+  if (n.includes('oba')) {
+    return { bg: 'bg-emerald-500', text: 'text-white', hex: '#10b981' };
+  }
+  if (n.includes('araz')) {
+    return { bg: 'bg-emerald-600', text: 'text-white', hex: '#059669' };
+  }
+  if (n.includes('bravo')) {
+    return { bg: 'bg-lime-600', text: 'text-white', hex: '#65a30d' };
+  }
+  if (n.includes('al')) {
+    return { bg: 'bg-amber-400', text: 'text-gray-900', hex: '#fbbf24' };
+  }
+  if (n.includes('bazarstore')) {
+    return { bg: 'bg-sky-600', text: 'text-white', hex: '#0284c7' };
+  }
+  if (n.includes('tamstore') || n.includes('tam')) {
+    return { bg: 'bg-teal-500', text: 'text-white', hex: '#14b8a6' };
+  }
+  if (n.includes('rahat')) {
+    return { bg: 'bg-purple-500', text: 'text-white', hex: '#a855f7' };
+  }
+  if (n.includes('neptun')) {
+    return { bg: 'bg-orange-500', text: 'text-white', hex: '#f97316' };
+  }
+  if (n.includes('bolmart')) {
+    return { bg: 'bg-rose-500', text: 'text-white', hex: '#f43f5e' };
+  }
+  if (n.includes('grandmart')) {
+    return { bg: 'bg-indigo-500', text: 'text-white', hex: '#6366f1' };
+  }
+  if (n.includes('megastore')) {
+    return { bg: 'bg-fuchsia-500', text: 'text-white', hex: '#d946ef' };
+  }
+  return { bg: 'bg-emerald-500', text: 'text-white', hex: '#10b981' };
+};
 
   const imageUrl = product.customImageUrl 
     ? product.customImageUrl 
@@ -300,16 +340,18 @@ const ProductCard: React.FC<ProductCardProps> = ({
     ? marketName.replace(/\s+market$/i, '').trim().toLowerCase().replace(/^\w/, c => c.toUpperCase())
     : '';
 
+  const softBadge = getMarketSoftBadgeStyle(marketName || '', accentColor);
+
   return (
     <div className={`relative flex flex-col h-full ${showMarketRibbon ? 'pt-5 sm:pt-5.5' : ''}`}>
-      {/* Market Name Tab - Sits UNDER the card (z-0), protruding with equal top & bottom padding */}
+      {/* Market Name Tab - Sits UNDER the card (z-0), soft brand color matching the market */}
       {showMarketRibbon && formattedMarketName && (
         <div 
-          className="absolute top-0 left-0 z-0 bg-[#161c28] text-white px-2.5 sm:px-3 pt-0.5 pb-2 rounded-t-lg sm:rounded-t-xl flex items-center justify-center pointer-events-none select-none max-w-[85%]"
-          style={{ height: '28px' }}
+          className={`absolute top-0 left-0 z-0 ${softBadge.bg} ${softBadge.text} px-2.5 sm:px-3 pt-0.5 pb-2 rounded-t-lg sm:rounded-t-xl flex items-center justify-center pointer-events-none select-none max-w-[85%] shadow-xs`}
+          style={{ height: '28px', backgroundColor: softBadge.hex }}
           title={marketName}
         >
-          <span className="text-[11px] sm:text-xs font-black tracking-tight text-white whitespace-nowrap leading-none">
+          <span className="text-[11px] sm:text-xs font-black tracking-tight whitespace-nowrap leading-none">
             {formattedMarketName}
           </span>
         </div>
@@ -319,7 +361,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
         id={id}
         onClick={onClick}
         className={`
-        bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300 flex flex-col h-full group relative cursor-pointer z-10
+        bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300
+        ${isRowOnMobile ? 'flex flex-row sm:flex-col p-2 sm:p-0 items-center sm:items-stretch' : 'flex flex-col'}
+        h-full group relative cursor-pointer z-10
         shadow-2xs hover:shadow-xs border border-gray-100 hover:border-${accentColor}-200
         ${isHighlighted ? 'ring-4 ring-yellow-400 ring-offset-2 scale-105 z-20' : ''}
       `}>
@@ -331,7 +375,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
               e.stopPropagation();
               onToggleFavorite();
             }}
-            className={`absolute z-30 transition-colors top-1.5 right-1.5 text-gray-300 hover:text-red-500 ${isMini ? 'p-1' : 'p-1.5'}`}
+            className={`absolute z-30 transition-colors ${isRowOnMobile ? 'top-2 right-2 sm:top-1.5 sm:right-1.5 p-1' : 'top-1.5 right-1.5'} text-gray-300 hover:text-red-500 ${isMini ? 'p-1' : 'p-1.5'}`}
             title={isFavorite ? "Yadda saxlanılanlardan çıxar" : "Yadda saxla"}
           >
             <Heart 
@@ -353,8 +397,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </button>
         )}
 
-        {/* Product Image Container - Reduced image height (aspect-[4/3]) */}
-        <div className="aspect-[4/3] w-full relative overflow-hidden bg-gray-50 flex items-center justify-center">
+        {/* Product Image Container - Shrunk on mobile when isRowOnMobile is true */}
+        <div className={`
+          ${isRowOnMobile ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-full sm:aspect-[4/3] rounded-lg sm:rounded-none shrink-0' : 'aspect-[4/3] w-full'}
+          relative overflow-hidden bg-gray-50 flex items-center justify-center
+        `}>
           {!imageError ? (
             <img 
               src={imageUrl} 
@@ -401,11 +448,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
       </div>
 
       {/* Content Area - Enlarged title text and room for product name */}
-      <div className={`${isMini ? 'p-1.5 pt-1.5 sm:p-2' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`}>
+      <div className={`${isRowOnMobile ? 'flex-1 min-w-0 pl-3 sm:pl-2.5 p-1 sm:p-2.5 flex flex-col justify-between h-full' : `${isMini ? 'p-1.5 pt-1.5 sm:p-2' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`}`}>
         <div>
-          <div className="min-h-[2.4rem] sm:min-h-[2.8rem] flex items-start">
+          <div className={`${isRowOnMobile ? 'min-h-0 sm:min-h-[2.8rem]' : 'min-h-[2.4rem] sm:min-h-[2.8rem]'} flex items-start`}>
             <h3 
-              className={`font-bold text-gray-800 line-clamp-2 leading-snug ${isMini ? 'text-[10px] sm:text-[11.5px]' : 'text-xs sm:text-[13px] md:text-sm'}`} 
+              className={`font-bold text-gray-800 line-clamp-2 leading-snug ${isRowOnMobile ? 'text-xs sm:text-[13px] md:text-sm' : isMini ? 'text-[10px] sm:text-[11.5px]' : 'text-xs sm:text-[13px] md:text-sm'}`} 
               title={product.productName}
             >
               {cleanName}

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Header from './components/Header';
+import BottomSearchDock from './components/BottomSearchDock';
 import ProductCard from './components/ProductCard';
 import GroupedProductCard from './components/GroupedProductCard';
 import ScannerModal from './components/ScannerModal';
@@ -1065,57 +1066,57 @@ const App: React.FC = () => {
       }
     }
 
-    // Default sample fallbacks for primary markets if no products are in the database yet
-    const fallbackSamples = [
-      {
-        marketId: 'oba',
-        marketName: 'Oba Market',
-        themeColor: 'green',
-        logoUrl: 'https://seeklogo.com/images/O/oba-market-logo-3626297371-seeklogo.com.png',
-        product: {
-          id: 'sample-oba',
-          productName: 'Tamdad gürcü xəngəli 600 q',
-          category: 'Qida & Paxlalılar' as const,
-          newPrice: '4.99',
-          oldPrice: '7.99',
-          discountPercentage: '-38%',
-          customImageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=400&auto=format&fit=crop&q=80'
+    // Default sample fallbacks ONLY if no products exist at all in any market
+    if (list.length === 0) {
+      const fallbackSamples = [
+        {
+          marketId: 'oba',
+          marketName: 'Oba Market',
+          themeColor: 'green',
+          logoUrl: 'https://seeklogo.com/images/O/oba-market-logo-3626297371-seeklogo.com.png',
+          product: {
+            id: 'sample-oba',
+            productName: 'Tamdad gürcü xəngəli 600 q',
+            category: 'Qida & Paxlalılar' as const,
+            newPrice: '4.99',
+            oldPrice: '7.99',
+            discountPercentage: '-38%',
+            customImageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=400&auto=format&fit=crop&q=80'
+          }
+        },
+        {
+          marketId: 'araz',
+          marketName: 'Araz Market',
+          themeColor: 'amber',
+          logoUrl: 'https://b7x9kq.arazmarket.az/storage/news/dsc_9152.jpg',
+          product: {
+            id: 'sample-araz',
+            productName: 'Tamdad düşbərə dana əti ilə 400 q',
+            category: 'Qida & Paxlalılar' as const,
+            newPrice: '3.99',
+            oldPrice: '5.59',
+            discountPercentage: '-29%',
+            customImageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400&auto=format&fit=crop&q=80'
+          }
+        },
+        {
+          marketId: 'bravo',
+          marketName: 'Bravo',
+          themeColor: 'amber',
+          logoUrl: 'https://bravosupermarket.az/img/bravo-logo.png',
+          product: {
+            id: 'sample-bravo',
+            productName: 'Tamdad gürzə dana əti ilə 400 q',
+            category: 'Qida & Paxlalılar' as const,
+            newPrice: '4.50',
+            oldPrice: '6.25',
+            discountPercentage: '-28%',
+            customImageUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&auto=format&fit=crop&q=80'
+          }
         }
-      },
-      {
-        marketId: 'araz',
-        marketName: 'Araz Market',
-        themeColor: 'amber',
-        logoUrl: 'https://b7x9kq.arazmarket.az/storage/news/dsc_9152.jpg',
-        product: {
-          id: 'sample-araz',
-          productName: 'Tamdad düşbərə dana əti ilə 400 q',
-          category: 'Qida & Paxlalılar' as const,
-          newPrice: '3.99',
-          oldPrice: '5.59',
-          discountPercentage: '-29%',
-          customImageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400&auto=format&fit=crop&q=80'
-        }
-      },
-      {
-        marketId: 'bravo',
-        marketName: 'Bravo',
-        themeColor: 'amber',
-        logoUrl: 'https://bravosupermarket.az/img/bravo-logo.png',
-        product: {
-          id: 'sample-bravo',
-          productName: 'Tamdad gürzə dana əti ilə 400 q',
-          category: 'Qida & Paxlalılar' as const,
-          newPrice: '4.50',
-          oldPrice: '6.25',
-          discountPercentage: '-28%',
-          customImageUrl: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&auto=format&fit=crop&q=80'
-        }
-      }
-    ];
+      ];
 
-    for (const fallback of fallbackSamples) {
-      if (!usedMarkets.has(fallback.marketId)) {
+      for (const fallback of fallbackSamples) {
         const matchedMarket = sortedMarkets.find(m => m.id === fallback.marketId) || {
           id: fallback.marketId,
           name: fallback.marketName,
@@ -1129,7 +1130,6 @@ const App: React.FC = () => {
           instagramPosts: []
         };
         list.push({ product: fallback.product, market: matchedMarket });
-        usedMarkets.add(fallback.marketId);
       }
     }
 
@@ -1536,19 +1536,20 @@ const App: React.FC = () => {
     isDatabaseModalOpen
   );
 
-  // Check if any subpage view is active (market, favorites, cheaper comparison, or search)
-  const hasActiveSubpage = Boolean(
-    activeMarketId !== null ||
-    showFavorites ||
-    showCheaperOnly ||
-    searchQuery.trim() !== ''
-  );
+  // Check if search or any subpage view is active
+  const isSearchActive = searchQuery.trim() !== '';
+  const isSubpageActive = activeMarketId !== null || showFavorites || showCheaperOnly;
+  const hasActiveSubpage = Boolean(isSubpageActive || isSearchActive);
 
   // Target history depth:
   // 0: Root Home page
-  // 1: Subpage (market / favorites / comparison / search) OR modal opened directly from home
-  // 2: Modal opened on top of a subpage
-  const targetDepth = (hasOpenModal && hasActiveSubpage) ? 2 : (hasOpenModal || hasActiveSubpage) ? 1 : 0;
+  // 1: Subpage (market / favorites / cheaper)
+  // +1 if Search query is active
+  // +1 if Modal is open
+  let targetDepth = 0;
+  if (isSubpageActive) targetDepth += 1;
+  if (isSearchActive) targetDepth += 1;
+  if (hasOpenModal) targetDepth += 1;
 
   const closeAllModals = useCallback(() => {
     setViewProduct(null);
@@ -1568,6 +1569,9 @@ const App: React.FC = () => {
 
   const hasActiveSubpageRef = useRef(hasActiveSubpage);
   hasActiveSubpageRef.current = hasActiveSubpage;
+
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
 
   const handleResetAppRef = useRef(handleResetApp);
   handleResetAppRef.current = handleResetApp;
@@ -1598,10 +1602,22 @@ const App: React.FC = () => {
 
       // When user presses phone back button (popped from higher depth to lower depth)
       if (newDepth < prevDepth) {
+        // 1. If any modal is open, close modal first
         if (hasOpenModalRef.current) {
           closeAllModalsRef.current();
-        } else if (hasActiveSubpageRef.current) {
+          return;
+        }
+        // 2. If search is active, clear search field on first back button click!
+        if (searchQueryRef.current.trim() !== '') {
+          setSearchQuery('');
+          setDebouncedSearchQuery('');
+          setIsSearching(false);
+          return;
+        }
+        // 3. Otherwise exit market or subpage to root home
+        if (hasActiveSubpageRef.current) {
           handleResetAppRef.current();
+          return;
         }
       }
     };
@@ -1635,27 +1651,13 @@ const App: React.FC = () => {
     <>
       {isLoading && <CartLoading />}
 
-      <div className={`min-h-screen bg-white pb-24 font-sans flex flex-col transition-opacity duration-200 ${isLoading ? 'opacity-0 pointer-events-none overflow-hidden h-screen' : 'opacity-100'}`}>
+      <div className={`min-h-screen bg-white pb-36 sm:pb-40 font-sans flex flex-col transition-opacity duration-200 ${isLoading ? 'opacity-0 pointer-events-none overflow-hidden h-screen' : 'opacity-100'}`}>
         {/* --- UNIFIED STICKY HEADER & MARKET SWITCHER --- */}
         <div ref={stickyHeaderRef} className="sticky top-0 z-50 bg-white shadow-xs">
           <Header 
             onAdminClick={handleAdminClick} 
             isAdmin={isAdmin} 
-            searchQuery={searchQuery}
-            onSearchChange={(q) => { setSearchQuery(q); setIsSearching(true); }}
-            maxPrice={maxPrice}
-            onMaxPriceChange={(p) => { setMaxPrice(p); setIsSearching(true); }}
-            markets={markets}
             onLogoClick={handleResetApp}
-            showCheaperOnly={showCheaperOnly}
-            onShowCheaperOnlyChange={handleShowCheaperOnlyChange}
-            showFavorites={showFavorites}
-            onShowFavoritesChange={(active) => {
-               setIsSearching(true);
-               setShowFavorites(active);
-               if (active) { handleShowCheaperOnlyChange(false); setActiveMarketId(null); }
-            }}
-            favoritesCount={favorites.length}
           />
 
           {/* --- ACTIVE MARKET HEADER (Only when a market is selected) --- */}
@@ -1666,12 +1668,20 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <button
                       type="button"
-                      onClick={() => handleSelectMarket(null)}
+                      onClick={() => {
+                        if (searchQuery.trim() !== '') {
+                          setSearchQuery('');
+                          setDebouncedSearchQuery('');
+                          setIsSearching(false);
+                        } else {
+                          handleSelectMarket(null);
+                        }
+                      }}
                       className="p-1.5 sm:p-2 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-gray-700 rounded-lg sm:rounded-xl border border-gray-200 transition-all flex items-center gap-1 shrink-0 active:scale-95"
-                      title="Ana səhifəyə qayıt"
+                      title="Geri qayıt"
                     >
                       <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700" strokeWidth={2.5} />
-                      <span className="hidden sm:inline text-xs font-bold text-gray-700">Ana Səhifə</span>
+                      <span className="hidden sm:inline text-xs font-bold text-gray-700">Geri</span>
                     </button>
 
                     <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white border border-gray-100 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
@@ -1837,7 +1847,25 @@ const App: React.FC = () => {
                                     isAdmin={isAdmin}
                                     variant="compact"
                                     hasCheaperAlternative={hasCheaper}
-                                    onClick={() => !isAdmin && setViewProduct({ product, marketName, catalogEndDate: market?.catalogs?.[0]?.endDate })}
+                                    onClick={() => {
+                                      if (!isAdmin) {
+                                        const favList = favorites.map(f => {
+                                          const fMkt = markets.find(m => m.id === f.marketId);
+                                          return {
+                                            product: f,
+                                            marketName: fMkt?.name || 'Naməlum Market',
+                                            catalogEndDate: fMkt?.catalogs?.[0]?.endDate
+                                          };
+                                        });
+                                        setViewProduct({
+                                          product,
+                                          marketName,
+                                          catalogEndDate: market?.catalogs?.[0]?.endDate,
+                                          productList: favList,
+                                          currentIndex: index
+                                        });
+                                      }
+                                    }}
                                     isFavorite={true}
                                     onToggleFavorite={() => toggleFavorite(product, product.marketId)}
                                   />
@@ -1867,6 +1895,30 @@ const App: React.FC = () => {
                        </div>
                     )}
                     <div className={`transition-all duration-300 ${isProcessingCheaper ? 'opacity-20 blur-sm' : ''}`}>
+                        {/* Geri düyməsi - Axtarış nəticələrində birbaşa geri qayıtmaq üçün */}
+                        {debouncedSearchQuery.trim().length > 0 && (
+                          <div className="flex items-center justify-between bg-gray-50/90 border border-gray-200/90 rounded-xl px-3.5 py-2 mb-3 shadow-2xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSearchQuery('');
+                                setDebouncedSearchQuery('');
+                                setIsSearching(false);
+                              }}
+                              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer"
+                              title="Axtarışı təmizlə və geri qayıt"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs">
+                                <ArrowLeft className="w-3.5 h-3.5" />
+                              </div>
+                              <span>Geri (Axtarışı təmizlə)</span>
+                            </button>
+                            <span className="text-xs text-gray-500 font-semibold truncate max-w-[150px] sm:max-w-none">
+                              «{debouncedSearchQuery}» üzrə axtarış
+                            </span>
+                          </div>
+                        )}
+
                         <div className="flex flex-wrap items-center gap-2">
                         {showCheaperOnly && (
                             <div className="flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-xl border border-green-200">
@@ -1917,7 +1969,22 @@ const App: React.FC = () => {
                                             isAdmin={isAdmin} 
                                             variant="compact" 
                                             hasCheaperAlternative={(product as any)._hasCheaper} 
-                                            onClick={() => !isAdmin && setViewProduct({ product, marketName: market.name, catalogEndDate: marketEndDate })} 
+                                            onClick={() => {
+                                              if (!isAdmin) {
+                                                const sList = market.filteredProducts.slice(0, visibleProductCount).map(p => ({
+                                                  product: p,
+                                                  marketName: market.name,
+                                                  catalogEndDate: marketEndDate
+                                                }));
+                                                setViewProduct({
+                                                  product,
+                                                  marketName: market.name,
+                                                  catalogEndDate: marketEndDate,
+                                                  productList: sList,
+                                                  currentIndex: index
+                                                });
+                                              }
+                                            }} 
                                             onEdit={() => handleEditFromSearch(product, market.id)} 
                                             isFavorite={fav} 
                                             onToggleFavorite={() => toggleFavorite(product, market.id)} 
@@ -2287,7 +2354,7 @@ const App: React.FC = () => {
                                           </div>
                                         )}
                                       </div>
-                                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3.5 md:gap-4">
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3.5 md:gap-4">
                                         {displayedProducts.map((product, idx) => (
                                           <ProductCard 
                                             key={`${mkt.id}-${product.productName}-${idx}`} 
@@ -2296,6 +2363,7 @@ const App: React.FC = () => {
                                             catalogEndDate={mktCatalog?.endDate}
                                             isAdmin={isAdmin} 
                                             variant="compact"
+                                            isRowOnMobile={true}
                                             hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
                                             onClick={() => {
                                               if (!isAdmin) {
@@ -2416,7 +2484,7 @@ const App: React.FC = () => {
                                                 </div>
                                               )}
                                             </div>
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3.5 md:gap-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3.5 md:gap-4">
                                               {group.products.map(({ product, originalIndex }, pIdx) => (
                                                 <ProductCard 
                                                   key={`${mkt.id}-${product.productName}-${originalIndex}`} 
@@ -2425,6 +2493,7 @@ const App: React.FC = () => {
                                                   catalogEndDate={mktCatalog?.endDate}
                                                   isAdmin={isAdmin} 
                                                   variant="compact"
+                                                  isRowOnMobile={true}
                                                   hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
                                                   onClick={() => {
                                                     if (!isAdmin) {
@@ -2454,7 +2523,7 @@ const App: React.FC = () => {
                                     </div>
                                   )
                                 ) : (
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3.5 md:gap-4">
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3.5 md:gap-4">
                                     {displayedProducts.map((product, index) => (
                                       <ProductCard 
                                         key={`${mkt.id}-${product.productName}-${index}`} 
@@ -2463,6 +2532,7 @@ const App: React.FC = () => {
                                         catalogEndDate={mktCatalog?.endDate}
                                         isAdmin={isAdmin} 
                                         variant="compact"
+                                        isRowOnMobile={true}
                                         hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
                                         onClick={() => {
                                           if (!isAdmin) {
@@ -2532,6 +2602,25 @@ const App: React.FC = () => {
         </div>
       </div>
 
+      {/* Bottom Fixed Search & Filter Dock (Pinned at the very bottom of the screen) */}
+      {!isLoading && (
+        <BottomSearchDock 
+          searchQuery={searchQuery}
+          onSearchChange={(q) => { setSearchQuery(q); setIsSearching(true); }}
+          maxPrice={maxPrice}
+          onMaxPriceChange={(p) => { setMaxPrice(p); setIsSearching(true); }}
+          showCheaperOnly={showCheaperOnly}
+          onShowCheaperOnlyChange={handleShowCheaperOnlyChange}
+          showFavorites={showFavorites}
+          onShowFavoritesChange={(active) => {
+             setIsSearching(true);
+             setShowFavorites(active);
+             if (active) { handleShowCheaperOnlyChange(false); setActiveMarketId(null); }
+          }}
+          favoritesCount={favorites.length}
+        />
+      )}
+
         <ScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} selectedMarket={currentMarket?.name || ''} marketUrl={currentMarket?.url || ''} currentLogoUrl={currentMarket?.logoUrl} existingCatalogs={currentMarket?.catalogs} onStreamStart={handleStreamStart} onStreamUpdate={handleStreamUpdate} onStreamEnd={handleStreamEnd} onLogoUpdate={handleLogoUpdate} />
         <AdminLoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} onLoginSuccess={() => setIsAdmin(true)} />
         <BannerEditorModal isOpen={isBannerModalOpen} onClose={() => setIsBannerModalOpen(false)} banner={activeBannerId === 'banner-1' ? banner1 : banner2} onSave={(b) => { if (activeBannerId === 'banner-1') updateBannerState(b, banner2); else updateBannerState(banner1, b); }} />
@@ -2555,6 +2644,8 @@ const App: React.FC = () => {
           onNext={handleNextProductInModal}
           hasPrev={Boolean(viewProduct?.productList && viewProduct.currentIndex !== undefined && viewProduct.currentIndex > 0)}
           hasNext={Boolean(viewProduct?.productList && viewProduct.currentIndex !== undefined && viewProduct.currentIndex < viewProduct.productList.length - 1)}
+          currentIndex={viewProduct?.currentIndex}
+          totalCount={viewProduct?.productList?.length}
         />
         
         <InstagramViewer 
