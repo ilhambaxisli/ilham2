@@ -37,6 +37,8 @@ interface ProductCardProps {
   marketName?: string;
   showMarketRibbon?: boolean;
   isRowOnMobile?: boolean;
+  isListMode?: boolean;
+  isThreeColMobile?: boolean;
 }
 
 export interface CleanProductInfo {
@@ -286,11 +288,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
   marketLogoUrl,
   marketName,
   showMarketRibbon = false,
-  isRowOnMobile = false
+  isRowOnMobile = false,
+  isListMode = false,
+  isThreeColMobile = false
 }) => {
   const [imageError, setImageError] = useState(false);
   const isMini = variant === 'mini';
   const isCompact = variant === 'compact' || isMini;
+  const effectiveRow = isListMode || isRowOnMobile;
 
   const { cleanName, quantity: quantityBadge } = extractQuantityAndCleanName(product.productName);
 
@@ -362,7 +367,7 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         onClick={onClick}
         className={`
         bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300
-        ${isRowOnMobile ? 'flex flex-row sm:flex-col p-2 sm:p-0 items-center sm:items-stretch' : 'flex flex-col'}
+        ${isListMode ? 'flex flex-row p-2 sm:p-2.5 items-center' : isRowOnMobile ? 'flex flex-row sm:flex-col p-2 sm:p-0 items-center sm:items-stretch' : 'flex flex-col'}
         h-full group relative cursor-pointer z-10
         shadow-2xs hover:shadow-xs border border-gray-100 hover:border-${accentColor}-200
         ${isHighlighted ? 'ring-4 ring-yellow-400 ring-offset-2 scale-105 z-20' : ''}
@@ -375,11 +380,11 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
               e.stopPropagation();
               onToggleFavorite();
             }}
-            className={`absolute z-30 transition-colors ${isRowOnMobile ? 'top-2 right-2 sm:top-1.5 sm:right-1.5 p-1' : 'top-1.5 right-1.5'} text-gray-300 hover:text-red-500 ${isMini ? 'p-1' : 'p-1.5'}`}
+            className={`absolute z-30 transition-colors ${effectiveRow ? 'top-2 right-2 p-1' : isThreeColMobile ? 'top-1 right-1 sm:top-1.5 sm:right-1.5 p-1 sm:p-1.5' : 'top-1.5 right-1.5 p-1.5'} text-gray-300 hover:text-red-500`}
             title={isFavorite ? "Yadda saxlanılanlardan çıxar" : "Yadda saxla"}
           >
             <Heart 
-              className={`${isMini ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : "w-4 h-4 sm:w-5 sm:h-5"} ${isFavorite ? "fill-red-500 text-red-500" : "hover:text-red-400"} drop-shadow-xs`} 
+              className={`${isMini ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : isThreeColMobile ? "w-3.5 h-3.5 sm:w-5 sm:h-5" : "w-4 h-4 sm:w-5 sm:h-5"} ${isFavorite ? "fill-red-500 text-red-500" : "hover:text-red-400"} drop-shadow-xs`} 
               strokeWidth={2} 
             />
           </button>
@@ -397,9 +402,13 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
           </button>
         )}
 
-        {/* Product Image Container - Shrunk on mobile when isRowOnMobile is true */}
+        {/* Product Image Container */}
         <div className={`
-          ${isRowOnMobile ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-full sm:aspect-[4/3] rounded-lg sm:rounded-none shrink-0' : 'aspect-[4/3] w-full'}
+          ${isListMode
+            ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-28 sm:h-28 rounded-lg shrink-0'
+            : isRowOnMobile
+              ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-full sm:aspect-[4/3] rounded-lg sm:rounded-none shrink-0'
+              : 'aspect-[4/3] w-full'}
           relative overflow-hidden bg-gray-50 flex items-center justify-center
         `}>
           {!imageError ? (
@@ -416,10 +425,10 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
             </div>
           )}
 
-          {/* Top Left: Market Logo Icon on top of the image as before */}
+          {/* Top Left: Market Logo Icon on top of the image */}
           {marketLogoUrl && (
             <div 
-              className="absolute top-1.5 left-1.5 z-20 w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden pointer-events-none"
+              className={`absolute top-1.5 left-1.5 z-20 ${isThreeColMobile ? 'w-5 h-5 sm:w-7 sm:h-7' : 'w-6 h-6 sm:w-7 sm:h-7'} rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden pointer-events-none`}
               title={marketName || "Market"}
             >
               <img src={marketLogoUrl} alt={marketName || "Market"} className="w-full h-full object-contain" />
@@ -429,17 +438,17 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         {/* Discount Percentage Badge */}
         {product.discountPercentage && (
           <div className={`
-            absolute ${marketLogoUrl ? 'bottom-1.5 left-1.5' : 'top-1.5 left-1.5'} bg-emerald-600 text-white font-bold rounded shadow-xs flex items-center z-10
-            ${isMini ? 'text-[7.5px] sm:text-[8.5px] px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
+            absolute ${marketLogoUrl ? 'bottom-1.5 left-1.5' : 'top-1 left-1 sm:top-1.5 sm:left-1.5'} bg-emerald-600 text-white font-bold rounded shadow-xs flex items-center z-10
+            ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7.5px] sm:text-[8.5px] px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
           `}>
             {product.discountPercentage}
           </div>
         )}
 
-        {/* Bottom Right: Large & Prominently Visible Quantity/Weight Badge */}
+        {/* Bottom Right: Quantity/Weight Badge */}
         {quantityBadge && (
           <div 
-            className="absolute bottom-1.5 right-1.5 z-10 bg-black/75 backdrop-blur-xs text-white font-black text-[11px] sm:text-xs md:text-sm px-2 sm:px-2.5 py-0.5 rounded-md shadow-md tracking-tight select-none pointer-events-none"
+            className={`absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 z-10 bg-black/75 backdrop-blur-xs text-white font-black ${isThreeColMobile ? 'text-[8.5px] sm:text-xs px-1.5 sm:px-2.5 py-0.5' : 'text-[11px] sm:text-xs md:text-sm px-2 sm:px-2.5 py-0.5'} rounded-md shadow-md tracking-tight select-none pointer-events-none`}
             title={`Miqdar / Çəki: ${quantityBadge}`}
           >
             {quantityBadge}
@@ -447,12 +456,38 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         )}
       </div>
 
-      {/* Content Area - Enlarged title text and room for product name */}
-      <div className={`${isRowOnMobile ? 'flex-1 min-w-0 pl-3.5 sm:pl-2.5 p-1 sm:p-2.5 flex flex-col justify-between h-full' : `${isMini ? 'p-1.5 pt-1.5 sm:p-2' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`}`}>
+      {/* Content Area */}
+      <div className={`${
+        isListMode
+          ? 'flex-1 min-w-0 pl-3.5 p-1 flex flex-col justify-between h-full'
+          : isRowOnMobile
+            ? 'flex-1 min-w-0 pl-3.5 sm:pl-2.5 p-1 sm:p-2.5 flex flex-col justify-between h-full'
+            : isThreeColMobile
+              ? 'p-1.5 sm:p-2.5 flex-1 flex flex-col justify-between'
+              : `${isMini ? 'p-1.5 pt-1.5 sm:p-2' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`
+      }`}>
         <div>
-          <div className={`${isRowOnMobile ? 'min-h-0 sm:min-h-[2.8rem] pr-6 sm:pr-0' : 'min-h-[2.4rem] sm:min-h-[2.8rem]'} flex items-start`}>
+          <div className={`${
+            isListMode
+              ? 'min-h-0 pr-6'
+              : isRowOnMobile
+                ? 'min-h-0 sm:min-h-[2.8rem] pr-6 sm:pr-0'
+                : isThreeColMobile
+                  ? 'min-h-[2rem] sm:min-h-[2.8rem]'
+                  : 'min-h-[2.4rem] sm:min-h-[2.8rem]'
+          } flex items-start`}>
             <h3 
-              className={`font-bold text-gray-900 line-clamp-2 leading-snug ${isRowOnMobile ? 'text-[14px] xs:text-[15.5px] sm:text-[13px] md:text-sm' : isMini ? 'text-[10px] sm:text-[11.5px]' : 'text-xs sm:text-[13px] md:text-sm'}`} 
+              className={`font-bold text-gray-900 line-clamp-2 leading-snug ${
+                isListMode
+                  ? 'text-[14px] xs:text-[15.5px] sm:text-base'
+                  : isRowOnMobile
+                    ? 'text-[14px] xs:text-[15.5px] sm:text-[13px] md:text-sm'
+                    : isThreeColMobile
+                      ? 'text-[10.5px] xs:text-[11.5px] sm:text-[13px] md:text-sm'
+                      : isMini
+                        ? 'text-[10px] sm:text-[11.5px]'
+                        : 'text-xs sm:text-[13px] md:text-sm'
+              }`} 
               title={product.productName}
             >
               {cleanName}
@@ -460,24 +495,40 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
           </div>
           
           {hasCheaperAlternative && (
-            <div className={isMini ? "mt-0.5" : "mt-1"}>
-              <div className={`inline-flex items-center gap-0.5 sm:gap-1 bg-green-100 border border-green-200 text-green-700 rounded font-bold ${isMini ? 'px-1.5 py-0.5 text-[7.5px] sm:text-[8.5px]' : 'px-1.5 py-0.5 text-[8.5px] sm:text-[9.5px]'}`}>
-                <TrendingDown className={isMini ? "w-2 h-2" : "w-2.5 h-2.5"} />
-                {isMini ? 'Ucuz' : 'Daha Ucuzu Var'}
+            <div className={isMini || isThreeColMobile ? "mt-0.5 sm:mt-1" : "mt-1"}>
+              <div className={`inline-flex items-center gap-0.5 sm:gap-1 bg-green-100 border border-green-200 text-green-700 rounded font-bold ${isThreeColMobile ? 'px-1 sm:px-1.5 py-0.5 text-[7px] sm:text-[9.5px]' : isMini ? 'px-1.5 py-0.5 text-[7.5px] sm:text-[8.5px]' : 'px-1.5 py-0.5 text-[8.5px] sm:text-[9.5px]'}`}>
+                <TrendingDown className={isMini || isThreeColMobile ? "w-2 h-2 sm:w-2.5 sm:h-2.5" : "w-2.5 h-2.5"} />
+                {isMini || isThreeColMobile ? <><span className="sm:hidden">Ucuz</span><span className="hidden sm:inline">Daha Ucuzu Var</span></> : 'Daha Ucuzu Var'}
               </div>
             </div>
           )}
         </div>
         
-        {/* Price Row: Bold green current price and line-through old price */}
-        <div className="mt-2 pt-1.5 border-t border-gray-100 flex items-center justify-between gap-1">
+        {/* Price Row */}
+        <div className={`${isThreeColMobile ? 'mt-1 sm:mt-2 pt-1 sm:pt-1.5 flex-wrap sm:flex-nowrap' : 'mt-2 pt-1.5'} border-t border-gray-100 flex items-center justify-between gap-1`}>
           {/* Left: Prices */}
-          <div className="flex items-baseline gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden min-w-0">
-            <span className={`font-black text-emerald-600 leading-none ${isRowOnMobile ? 'text-lg xs:text-xl sm:text-lg' : 'text-base sm:text-lg'} shrink-0 whitespace-nowrap`}>
+          <div className="flex items-baseline gap-1 sm:gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden min-w-0">
+            <span className={`font-black text-emerald-600 leading-none ${
+              isListMode
+                ? 'text-lg xs:text-xl'
+                : isRowOnMobile
+                  ? 'text-lg xs:text-xl sm:text-lg'
+                  : isThreeColMobile
+                    ? 'text-[13px] xs:text-sm sm:text-lg'
+                    : 'text-base sm:text-lg'
+            } shrink-0 whitespace-nowrap`}>
               {product.newPrice} <span className="text-[0.8em] font-bold">₼</span>
             </span>
             {product.oldPrice && product.oldPrice !== '---' && (
-              <span className={`text-gray-400 line-through leading-none font-semibold ${isRowOnMobile ? 'text-xs xs:text-sm sm:text-sm' : 'text-xs sm:text-sm'} shrink-0 whitespace-nowrap`}>
+              <span className={`text-gray-400 line-through leading-none font-semibold ${
+                isListMode
+                  ? 'text-xs xs:text-sm'
+                  : isRowOnMobile
+                    ? 'text-xs xs:text-sm sm:text-sm'
+                    : isThreeColMobile
+                      ? 'text-[9.5px] sm:text-sm'
+                      : 'text-xs sm:text-sm'
+              } shrink-0 whitespace-nowrap`}>
                 {product.oldPrice}
               </span>
             )}
@@ -492,13 +543,13 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
 
             return (
               <div 
-                className="flex items-center gap-1 shrink-0 select-none ml-auto"
+                className="flex items-center gap-0.5 sm:gap-1 shrink-0 select-none ml-auto"
                 title={`Bitmə tarixi: ${countdownInfo.formattedDate} (${countdownInfo.daysLeft <= 0 ? (countdownInfo.daysLeft === 0 ? 'Bu gün bitir' : 'Bitib') : `${countdownInfo.daysLeft} gün qaldı`})`}
               >
-                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full flex items-center justify-center shrink-0">
-                  <Clock className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${countdownInfo.iconColor}`} strokeWidth={2.2} />
+                <div className={`${isThreeColMobile ? 'w-2.5 h-2.5 sm:w-4 sm:h-4' : 'w-3.5 h-3.5 sm:w-4 sm:h-4'} rounded-full flex items-center justify-center shrink-0`}>
+                  <Clock className={`${isThreeColMobile ? 'w-2.5 h-2.5 sm:w-3.5 sm:h-3.5' : 'w-3 h-3 sm:w-3.5 sm:h-3.5'} ${countdownInfo.iconColor}`} strokeWidth={2.2} />
                 </div>
-                <span className={`text-[8.5px] sm:text-[9.5px] font-bold px-1.5 py-0.5 rounded border leading-none shrink-0 ${countdownInfo.badgeStyle}`}>
+                <span className={`${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5'} font-bold py-0.5 rounded border leading-none shrink-0 ${countdownInfo.badgeStyle}`}>
                   {countdownInfo.label}
                 </span>
               </div>

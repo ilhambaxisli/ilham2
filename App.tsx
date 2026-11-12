@@ -16,7 +16,7 @@ import ProductDetailModal from './components/ProductDetailModal';
 import SocialDealsModal from './components/SocialDealsModal';
 import { MarketData, DiscountProduct, BannerData, SupabaseConfig, Catalog, FavoriteItem } from './types';
 import * as supabaseService from './services/supabase';
-import { RefreshCw, ShoppingBag, ArrowRight, Loader2, Plus, Trash2, Search, Database, Home, ChevronRight, Store, LayoutList, XCircle, ChevronUp, ChevronDown, Edit, Calendar, Clock, AlertTriangle, CheckCircle2, ShoppingCart, TrendingDown, ArrowLeft, Heart, RotateCcw, Instagram, X, Check, ChevronLeft, Sparkles, ExternalLink, Tag, Percent } from 'lucide-react';
+import { RefreshCw, ShoppingBag, ArrowRight, Loader2, Plus, Trash2, Search, Database, Home, ChevronRight, Store, LayoutGrid, LayoutList, XCircle, ChevronUp, ChevronDown, Edit, Calendar, Clock, AlertTriangle, CheckCircle2, ShoppingCart, TrendingDown, ArrowLeft, Heart, RotateCcw, Instagram, X, Check, ChevronLeft, Sparkles, ExternalLink, Tag, Percent } from 'lucide-react';
 
 const INITIAL_MARKETS: MarketData[] = [
   {
@@ -810,6 +810,7 @@ const App: React.FC = () => {
     setActiveMarketId(marketId);
     setSelectedCategoryFilter(null);
     setActiveCategoryDropdown(null);
+    setIsMarketSwitcherOpen(false);
     setVisibleDetailCount(24);
     window.scrollTo({ top: 0, behavior: 'auto' });
   };
@@ -837,47 +838,35 @@ const App: React.FC = () => {
   const [marketToEdit, setMarketToEdit] = useState<MarketData | null>(null);
   const [productToEdit, setProductToEdit] = useState<{product: DiscountProduct, index: number, catalogId?: string} | null>(null);
   const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState(false);
+  const [productViewMode, setProductViewMode] = useState<'grid' | 'list'>('grid');
   const [viewProduct, setViewProduct] = useState<{
     product: DiscountProduct;
     marketName: string;
+    marketId?: string;
     catalogEndDate?: string;
-    productList?: { product: DiscountProduct; marketName: string; catalogEndDate?: string }[];
+    productList?: { product: DiscountProduct; marketName: string; marketId?: string; catalogEndDate?: string }[];
     currentIndex?: number;
   } | null>(null);
 
-  const handleNextProductInModal = () => {
-    if (!viewProduct || !viewProduct.productList || viewProduct.currentIndex === undefined) return;
-    const nextIdx = viewProduct.currentIndex + 1;
-    if (nextIdx < viewProduct.productList.length) {
-      const nextItem = viewProduct.productList[nextIdx];
-      setViewProduct({
-        product: nextItem.product,
-        marketName: nextItem.marketName,
-        catalogEndDate: nextItem.catalogEndDate,
-        productList: viewProduct.productList,
-        currentIndex: nextIdx
-      });
-    }
-  };
-
-  const handlePrevProductInModal = () => {
-    if (!viewProduct || !viewProduct.productList || viewProduct.currentIndex === undefined) return;
-    const prevIdx = viewProduct.currentIndex - 1;
-    if (prevIdx >= 0) {
-      const prevItem = viewProduct.productList[prevIdx];
-      setViewProduct({
-        product: prevItem.product,
-        marketName: prevItem.marketName,
-        catalogEndDate: prevItem.catalogEndDate,
-        productList: viewProduct.productList,
-        currentIndex: prevIdx
-      });
-    }
+  const handleSelectIndexInModal = (newIdx: number) => {
+    setViewProduct(prev => {
+      if (!prev || !prev.productList || newIdx < 0 || newIdx >= prev.productList.length) return prev;
+      const item = prev.productList[newIdx];
+      return {
+        ...prev,
+        product: item.product,
+        marketName: item.marketName,
+        marketId: item.marketId,
+        catalogEndDate: item.catalogEndDate,
+        currentIndex: newIdx
+      };
+    });
   };
   const [previousViewState, setPreviousViewState] = useState<ViewState | null>(null);
   const [instagramViewerData, setInstagramViewerData] = useState<{posts: string[], name: string, initialIndex: number} | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState<string | null>(null);
+  const [isMarketSwitcherOpen, setIsMarketSwitcherOpen] = useState(false);
 
   const handleShowCheaperOnlyChange = (active: boolean) => {
     if (cheaperTimeoutRef.current) {
@@ -1046,7 +1035,7 @@ const App: React.FC = () => {
 
   const sortedMarkets = useMemo(() => sortMarketsByOrder(markets), [markets]);
 
-  // One random sample product from each market, horizontally scrollable (randomly picks an item for each market)
+  // One consistent sample product from each market, horizontally scrollable (deterministic so it doesn't jump randomly)
   const sampleFeaturedProducts = useMemo(() => {
     const list: { product: DiscountProduct; market: MarketData }[] = [];
     const usedMarkets = new Set<string>();
@@ -1058,9 +1047,8 @@ const App: React.FC = () => {
       
       const validProducts = prods.filter(p => p.productName && p.newPrice && p.newPrice !== '---');
       if (validProducts.length > 0) {
-        // Randomly pick one product from this market
-        const randomIndex = Math.floor(Math.random() * validProducts.length);
-        const candidate = validProducts[randomIndex];
+        // Deterministically pick the first valid product with an image (or fallback to first valid product)
+        const candidate = validProducts.find(p => !!p.customImageUrl) || validProducts[0];
         list.push({ product: candidate, market: m });
         usedMarkets.add(m.id);
       }
@@ -1253,6 +1241,14 @@ const App: React.FC = () => {
       if (exists) newFavorites = prev.filter(f => !(f.productName === product.productName && f.marketId === marketId));
       else newFavorites = [...prev, { ...product, marketId, addedAt: Date.now() }];
       return newFavorites;
+    });
+  };
+
+  const ensureFavorite = (product: DiscountProduct, marketId: string) => {
+    setFavorites(prev => {
+      const exists = prev.find(f => f.productName === product.productName && f.marketId === marketId);
+      if (exists) return prev;
+      return [...prev, { ...product, marketId, addedAt: Date.now() }];
     });
   };
 
@@ -1662,13 +1658,24 @@ const App: React.FC = () => {
 
           {/* --- ACTIVE MARKET HEADER (Only when a market is selected) --- */}
           {!isLoading && !showFavorites && activeMarketId !== null && activeMarketObj ? (
-            <div className="bg-white/95 backdrop-blur-md border-t border-b border-gray-100 py-1.5 sm:py-2 px-2.5 sm:px-4 shadow-xs">
+            <>
+              {isMarketSwitcherOpen && (
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMarketSwitcherOpen(false);
+                  }} 
+                />
+              )}
+              <div className="relative z-50 bg-white/95 backdrop-blur-md border-t border-b border-gray-100 py-1.5 sm:py-2 px-2.5 sm:px-4 shadow-xs">
                 <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
-                  {/* Left: Back to Home + Market Logo + Market Name (Fixed at top on scroll) */}
+                  {/* Left: Back to Home + Clickable Market Logo & Name Dropdown */}
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <button
                       type="button"
                       onClick={() => {
+                        setIsMarketSwitcherOpen(false);
                         if (searchQuery.trim() !== '') {
                           setSearchQuery('');
                           setDebouncedSearchQuery('');
@@ -1677,39 +1684,106 @@ const App: React.FC = () => {
                           handleSelectMarket(null);
                         }
                       }}
-                      className="p-1.5 sm:p-2 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-gray-700 rounded-lg sm:rounded-xl border border-gray-200 transition-all flex items-center gap-1 shrink-0 active:scale-95"
+                      className="p-1.5 sm:p-2 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-gray-700 rounded-lg sm:rounded-xl border border-gray-200 transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer"
                       title="Geri qayıt"
                     >
                       <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700" strokeWidth={2.5} />
                       <span className="hidden sm:inline text-xs font-bold text-gray-700">Geri</span>
                     </button>
 
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white border border-gray-100 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
-                      {activeMarketObj.logoUrl ? (
-                        <img src={activeMarketObj.logoUrl} alt={activeMarketObj.name} className="w-full h-full object-contain p-0.5" />
-                      ) : (
-                        <span className={`text-${activeMarketObj.themeColor || 'green'}-700 font-bold text-sm sm:text-lg`}>{activeMarketObj.logoPlaceholder}</span>
-                      )}
-                    </div>
+                    <div className="relative min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveCategoryDropdown(null);
+                          setIsMarketSwitcherOpen(prev => !prev);
+                        }}
+                        title="Bütün marketləri gör və seç"
+                        className="flex items-center gap-2 sm:gap-2.5 min-w-0 text-left rounded-xl px-1.5 py-1 -my-1 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
+                      >
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white border border-gray-100 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
+                          {activeMarketObj.logoUrl ? (
+                            <img src={activeMarketObj.logoUrl} alt={activeMarketObj.name} className="w-full h-full object-contain p-0.5" />
+                          ) : (
+                            <span className={`text-${activeMarketObj.themeColor || 'green'}-700 font-bold text-sm sm:text-lg`}>{activeMarketObj.logoPlaceholder}</span>
+                          )}
+                        </div>
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 sm:gap-2">
-                        <h2 className="text-sm sm:text-base md:text-lg font-black text-gray-900 truncate tracking-tight">{activeMarketObj.name}</h2>
-                        {activeDateStatus.label && (
-                          <span className={`hidden sm:inline-block text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${activeDateStatus.isActive ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`}>
-                            {activeDateStatus.label}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] sm:text-xs text-gray-400 font-medium">
-                          {activeMarketFilteredProducts.length} məhsul
-                        </span>
-                      </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1 sm:gap-1.5">
+                            <h2 className="text-sm sm:text-base md:text-lg font-black text-gray-900 truncate tracking-tight">{activeMarketObj.name}</h2>
+                            <ChevronDown className={`w-4 h-4 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${isMarketSwitcherOpen ? 'rotate-180 text-gray-800' : ''}`} />
+                            {activeDateStatus.label && (
+                              <span className={`hidden sm:inline-block text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${activeDateStatus.isActive ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                                {activeDateStatus.label}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] sm:text-xs text-gray-400 font-medium">
+                              {activeMarketFilteredProducts.length} məhsul
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Market Switcher Dropdown (Category-style list) */}
+                      {isMarketSwitcherOpen && (
+                        <div className="absolute left-0 top-full mt-2 w-64 sm:w-72 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50 max-h-80 overflow-y-auto animate-[fadeIn_0.15s_ease-out]">
+                          <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                            <span>Marketlər</span>
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setIsMarketSwitcherOpen(false); }}
+                              className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          {sortedMarkets.map(m => {
+                            const mC = m.catalogs || [];
+                            const mCatId = activeCatalogByMarket[m.id] || mC[0]?.id;
+                            const mCat = mC.find(c => c.id === mCatId) || mC[0];
+                            const mProds = mCat ? (mCat.products || []) : (m.products || []);
+                            const mCount = mProds.filter(filterProductForDetail).length;
+                            const isCurrent = m.id === activeMarketId;
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsMarketSwitcherOpen(false);
+                                  handleSelectMarket(m.id);
+                                }}
+                                className={`w-full text-left px-3 py-2 text-xs font-medium flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                                  isCurrent 
+                                    ? 'bg-gray-100 font-bold text-gray-900' 
+                                    : 'text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-6 h-6 rounded-lg bg-white border border-gray-200/80 flex items-center justify-center overflow-hidden shrink-0">
+                                    {m.logoUrl ? (
+                                      <img src={m.logoUrl} alt={m.name} className="w-full h-full object-contain p-0.5" />
+                                    ) : (
+                                      <span className={`text-${m.themeColor || 'green'}-700 font-bold text-[10px]`}>{m.logoPlaceholder}</span>
+                                    )}
+                                  </div>
+                                  <span className="truncate">{m.name}</span>
+                                </div>
+                                <span className="text-[10px] text-gray-500 bg-gray-100 font-semibold px-2 py-0.5 rounded-full shrink-0">
+                                  {mCount}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Right: Admin buttons + Quick Market Switcher */}
+                  {/* Right: Admin buttons + View Mode Toggle */}
                   <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                     {isAdmin && (
                       <>
@@ -1728,28 +1802,38 @@ const App: React.FC = () => {
                       </>
                     )}
 
-                    {/* Quick horizontal scroll of all market pills */}
-                    <div className="flex items-center gap-1 pl-1.5 sm:pl-2 border-l border-gray-200 max-w-[130px] xs:max-w-[180px] sm:max-w-xs md:max-w-md overflow-x-auto scrollbar-hide py-0.5">
-                      {sortedMarkets.map((m) => {
-                        const isCur = m.id === activeMarketId;
-                        const name = formatMarketButtonName(m.name);
-                        return (
-                          <button
-                            key={m.id}
-                            onClick={() => handleSelectMarket(m.id)}
-                            className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold shrink-0 transition-colors cursor-pointer ${
-                              isCur ? 'bg-blue-600 text-white shadow-2xs' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                          >
-                            {name}
-                          </button>
-                        );
-                      })}
+                    {/* View Mode Toggle: 3-column Grid (default) vs 1-column List */}
+                    <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/80 shrink-0" role="group" aria-label="Görünüş rejimi">
+                      <button
+                        type="button"
+                        onClick={() => setProductViewMode('grid')}
+                        className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${
+                          productViewMode === 'grid'
+                            ? 'bg-white text-emerald-600 shadow-2xs'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                        title="3-lü cərgə (Grid)"
+                      >
+                        <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProductViewMode('list')}
+                        className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${
+                          productViewMode === 'list'
+                            ? 'bg-white text-emerald-600 shadow-2xs'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                        title="Alt-alta siyahı (List)"
+                      >
+                        <LayoutList className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
-            ) : null}
+            </>
+          ) : null}
         </div>
         
         {previousViewState && (
@@ -1823,22 +1907,42 @@ const App: React.FC = () => {
 
             {showFavorites ? (
                <div className="animate-[fadeIn_0.5s_ease-out]">
-                  <div className="mb-6 flex items-center justify-between">
-                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                  <div className="mb-6 flex items-center justify-between gap-2">
+                    <h2 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2">
                        <Heart className="w-6 h-6 text-red-500 fill-current" />
                        Yadda Saxlanılanlar
                     </h2>
-                    <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{favorites.length} məhsul</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/80" role="group" aria-label="Görünüş rejimi">
+                        <button
+                          type="button"
+                          onClick={() => setProductViewMode('grid')}
+                          className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'grid' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
+                          title="3-lü cərgə (Grid)"
+                        >
+                          <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProductViewMode('list')}
+                          className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'list' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
+                          title="Alt-alta siyahı (List)"
+                        >
+                          <LayoutList className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </button>
+                      </div>
+                      <span className="text-xs sm:text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{favorites.length} məhsul</span>
+                    </div>
                   </div>
                   {favorites.length > 0 ? (
-                    <div className={`grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4 transition-all duration-300 ${isSearching ? 'blur-sm opacity-60' : ''}`}>
+                    <div className={`${productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4'} transition-all duration-300 ${isSearching ? 'blur-sm opacity-60' : ''}`}>
                        {favorites.map((product, index) => {
                           const market = markets.find(m => m.id === product.marketId);
                           const marketName = market?.name || 'Naməlum Market';
                           const hasCheaper = market ? checkForCheaperAlternative(product, market.id) : false;
                           return (
                             <div key={`${product.marketId}-${product.productName}-${index}`} className="relative h-full">
-                               <div className="absolute top-0 left-0 right-0 bg-gray-900/5 text-[10px] font-bold text-center py-0.5 rounded-t-xl z-0 text-gray-500">{marketName}</div>
+                               <div className="absolute top-0 left-0 right-0 bg-gray-900/5 text-[10px] font-bold text-center py-0.5 rounded-t-xl z-0 text-gray-500 truncate px-2">{marketName}</div>
                                <div className="pt-4 h-full">
                                   <ProductCard 
                                     product={product}
@@ -1846,7 +1950,8 @@ const App: React.FC = () => {
                                     catalogEndDate={market?.catalogs?.[0]?.endDate}
                                     isAdmin={isAdmin}
                                     variant="compact"
-                                    isRowOnMobile={true}
+                                    isListMode={productViewMode === 'list'}
+                                    isThreeColMobile={productViewMode === 'grid'}
                                     hasCheaperAlternative={hasCheaper}
                                     onClick={() => {
                                       if (!isAdmin) {
@@ -1855,12 +1960,14 @@ const App: React.FC = () => {
                                           return {
                                             product: f,
                                             marketName: fMkt?.name || 'Naməlum Market',
+                                            marketId: f.marketId,
                                             catalogEndDate: fMkt?.catalogs?.[0]?.endDate
                                           };
                                         });
                                         setViewProduct({
                                           product,
                                           marketName,
+                                          marketId: product.marketId,
                                           catalogEndDate: market?.catalogs?.[0]?.endDate,
                                           productList: favList,
                                           currentIndex: index
@@ -1896,9 +2003,9 @@ const App: React.FC = () => {
                        </div>
                     )}
                     <div className={`transition-all duration-300 ${isProcessingCheaper ? 'opacity-20 blur-sm' : ''}`}>
-                        {/* Geri düyməsi - Axtarış nəticələrində birbaşa geri qayıtmaq üçün */}
-                        {debouncedSearchQuery.trim().length > 0 && (
-                          <div className="flex items-center justify-between bg-gray-50/90 border border-gray-200/90 rounded-xl px-3.5 py-2 mb-3 shadow-2xs">
+                        {/* Geri düyməsi və Görünüş seçimi - Axtarış nəticələrində */}
+                        <div className="flex items-center justify-between bg-gray-50/90 border border-gray-200/90 rounded-xl px-3.5 py-2 mb-3 shadow-2xs gap-2">
+                          {debouncedSearchQuery.trim().length > 0 ? (
                             <button
                               type="button"
                               onClick={() => {
@@ -1906,19 +2013,39 @@ const App: React.FC = () => {
                                 setDebouncedSearchQuery('');
                                 setIsSearching(false);
                               }}
-                              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer"
+                              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer min-w-0"
                               title="Axtarışı təmizlə və geri qayıt"
                             >
-                              <div className="w-6 h-6 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs">
+                              <div className="w-6 h-6 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs shrink-0">
                                 <ArrowLeft className="w-3.5 h-3.5" />
                               </div>
-                              <span>Geri (Axtarışı təmizlə)</span>
+                              <span className="truncate">Geri («{debouncedSearchQuery}»)</span>
                             </button>
-                            <span className="text-xs text-gray-500 font-semibold truncate max-w-[150px] sm:max-w-none">
-                              «{debouncedSearchQuery}» üzrə axtarış
-                            </span>
-                          </div>
-                        )}
+                          ) : (
+                            <span className="text-xs sm:text-sm font-bold text-gray-700">Nəticələr</span>
+                          )}
+
+                          {!showCheaperOnly && (
+                            <div className="flex items-center bg-white p-0.5 rounded-lg border border-gray-200/90 shrink-0" role="group" aria-label="Görünüş rejimi">
+                              <button
+                                type="button"
+                                onClick={() => setProductViewMode('grid')}
+                                className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'grid' ? 'bg-emerald-50 text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
+                                title="3-lü cərgə (Grid)"
+                              >
+                                <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setProductViewMode('list')}
+                                className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'list' ? 'bg-emerald-50 text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
+                                title="Alt-alta siyahı (List)"
+                              >
+                                <LayoutList className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
 
                         <div className="flex flex-wrap items-center gap-2">
                         {showCheaperOnly && (
@@ -1958,7 +2085,7 @@ const App: React.FC = () => {
                                         {market.filteredProducts.length} məhsul
                                       </span>
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4">
+                                    <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4'}>
                                     {market.filteredProducts.slice(0, visibleProductCount).map((product, index) => {
                                         const fav = isFavorite(product.productName || '', market.id);
                                         return (
@@ -1969,18 +2096,21 @@ const App: React.FC = () => {
                                             catalogEndDate={marketEndDate}
                                             isAdmin={isAdmin} 
                                             variant="compact" 
-                                            isRowOnMobile={true}
+                                            isListMode={productViewMode === 'list'}
+                                            isThreeColMobile={productViewMode === 'grid'}
                                             hasCheaperAlternative={(product as any)._hasCheaper} 
                                             onClick={() => {
                                               if (!isAdmin) {
-                                                const sList = market.filteredProducts.slice(0, visibleProductCount).map(p => ({
+                                                const sList = market.filteredProducts.map(p => ({
                                                   product: p,
                                                   marketName: market.name,
+                                                  marketId: market.id,
                                                   catalogEndDate: marketEndDate
                                                 }));
                                                 setViewProduct({
                                                   product,
                                                   marketName: market.name,
+                                                  marketId: market.id,
                                                   catalogEndDate: marketEndDate,
                                                   productList: sList,
                                                   currentIndex: index
@@ -2074,11 +2204,13 @@ const App: React.FC = () => {
                                           const featuredList = sampleFeaturedProducts.map(s => ({
                                             product: s.product,
                                             marketName: s.market.name,
+                                            marketId: s.market.id,
                                             catalogEndDate: s.market.catalogs?.[0]?.endDate
                                           }));
                                           setViewProduct({ 
                                             product, 
                                             marketName: market.name, 
+                                            marketId: market.id,
                                             catalogEndDate: market.catalogs?.[0]?.endDate,
                                             productList: featuredList,
                                             currentIndex: idx
@@ -2194,6 +2326,28 @@ const App: React.FC = () => {
 
                           const displayedProducts = effectiveProducts.slice(0, visibleDetailCount);
                           const hasMore = visibleDetailCount < effectiveProducts.length;
+
+                          // Build complete ordered market product list (ALL products in this market catalog, regardless of category filter/pagination)
+                          // so the modal counter always reflects TOTAL market products (e.g. 4 / 72, NOT category subtotal)
+                          const fullMarketOrderedProducts: DiscountProduct[] = (() => {
+                            if (hasCategories) {
+                              const catOrderMap = new Map<string, DiscountProduct[]>();
+                              mktFilteredProducts.forEach(p => {
+                                const cat = (p.category || 'Digər').trim() || 'Digər';
+                                if (!catOrderMap.has(cat)) catOrderMap.set(cat, []);
+                                catOrderMap.get(cat)!.push(p);
+                              });
+                              return Array.from(catOrderMap.values()).flat();
+                            }
+                            return mktFilteredProducts;
+                          })();
+
+                          const fullMarketModalList = fullMarketOrderedProducts.map(p => ({
+                            product: p,
+                            marketName: mkt.name,
+                            marketId: mkt.id,
+                            catalogEndDate: mktCatalog?.endDate
+                          }));
 
                           // Grouping by category when all categories are shown
                           const groupedProductsByCategory: { category: string; products: { product: DiscountProduct; originalIndex: number }[] }[] = [];
@@ -2356,7 +2510,7 @@ const App: React.FC = () => {
                                           </div>
                                         )}
                                       </div>
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3.5 md:gap-4">
+                                      <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
                                         {displayedProducts.map((product, idx) => (
                                           <ProductCard 
                                             key={`${mkt.id}-${product.productName}-${idx}`} 
@@ -2365,21 +2519,19 @@ const App: React.FC = () => {
                                             catalogEndDate={mktCatalog?.endDate}
                                             isAdmin={isAdmin} 
                                             variant="compact"
-                                            isRowOnMobile={true}
+                                            isListMode={productViewMode === 'list'}
+                                            isThreeColMobile={productViewMode === 'grid'}
                                             hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
                                             onClick={() => {
                                               if (!isAdmin) {
-                                                const mktList = displayedProducts.map(p => ({
-                                                  product: p,
-                                                  marketName: mkt.name,
-                                                  catalogEndDate: mktCatalog?.endDate
-                                                }));
+                                                const fullIdx = fullMarketModalList.findIndex(item => item.product === product);
                                                 setViewProduct({ 
                                                   product, 
                                                   marketName: mkt.name, 
+                                                  marketId: mkt.id,
                                                   catalogEndDate: mktCatalog?.endDate,
-                                                  productList: mktList,
-                                                  currentIndex: idx
+                                                  productList: fullMarketModalList,
+                                                  currentIndex: fullIdx >= 0 ? fullIdx : 0
                                                 });
                                               }
                                             }} 
@@ -2486,8 +2638,8 @@ const App: React.FC = () => {
                                                 </div>
                                               )}
                                             </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3.5 md:gap-4">
-                                              {group.products.map(({ product, originalIndex }, pIdx) => (
+                                            <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
+                                              {group.products.map(({ product, originalIndex }) => (
                                                 <ProductCard 
                                                   key={`${mkt.id}-${product.productName}-${originalIndex}`} 
                                                   product={product} 
@@ -2495,21 +2647,19 @@ const App: React.FC = () => {
                                                   catalogEndDate={mktCatalog?.endDate}
                                                   isAdmin={isAdmin} 
                                                   variant="compact"
-                                                  isRowOnMobile={true}
+                                                  isListMode={productViewMode === 'list'}
+                                                  isThreeColMobile={productViewMode === 'grid'}
                                                   hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
                                                   onClick={() => {
                                                     if (!isAdmin) {
-                                                      const groupList = group.products.map(p => ({
-                                                        product: p.product,
-                                                        marketName: mkt.name,
-                                                        catalogEndDate: mktCatalog?.endDate
-                                                      }));
+                                                      const fullIdx = fullMarketModalList.findIndex(item => item.product === product);
                                                       setViewProduct({ 
                                                         product, 
                                                         marketName: mkt.name, 
+                                                        marketId: mkt.id,
                                                         catalogEndDate: mktCatalog?.endDate,
-                                                        productList: groupList,
-                                                        currentIndex: pIdx
+                                                        productList: fullMarketModalList,
+                                                        currentIndex: fullIdx >= 0 ? fullIdx : 0
                                                       });
                                                     }
                                                   }} 
@@ -2525,7 +2675,7 @@ const App: React.FC = () => {
                                     </div>
                                   )
                                 ) : (
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3.5 md:gap-4">
+                                  <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
                                     {displayedProducts.map((product, index) => (
                                       <ProductCard 
                                         key={`${mkt.id}-${product.productName}-${index}`} 
@@ -2534,21 +2684,19 @@ const App: React.FC = () => {
                                         catalogEndDate={mktCatalog?.endDate}
                                         isAdmin={isAdmin} 
                                         variant="compact"
-                                        isRowOnMobile={true}
+                                        isListMode={productViewMode === 'list'}
+                                        isThreeColMobile={productViewMode === 'grid'}
                                         hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
                                         onClick={() => {
                                           if (!isAdmin) {
-                                            const mktList = displayedProducts.map(p => ({
-                                              product: p,
-                                              marketName: mkt.name,
-                                              catalogEndDate: mktCatalog?.endDate
-                                            }));
+                                            const fullIdx = fullMarketModalList.findIndex(item => item.product === product);
                                             setViewProduct({ 
                                               product, 
                                               marketName: mkt.name, 
+                                              marketId: mkt.id,
                                               catalogEndDate: mktCatalog?.endDate,
-                                              productList: mktList,
-                                              currentIndex: index
+                                              productList: fullMarketModalList,
+                                              currentIndex: fullIdx >= 0 ? fullIdx : 0
                                             });
                                           }
                                         }} 
@@ -2631,24 +2779,52 @@ const App: React.FC = () => {
         {marketToEdit && <EditMarketModal isOpen={!!marketToEdit} onClose={() => setMarketToEdit(null)} market={marketToEdit} onSave={handleUpdateMarket} onDelete={handleDeleteMarket} />}
         {productToEdit && activeMarketId && <EditProductModal isOpen={!!productToEdit} onClose={() => setProductToEdit(null)} product={productToEdit.product} onSave={handleUpdateProduct} />}
         <DatabaseModal isOpen={isDatabaseModalOpen} onClose={() => setIsDatabaseModalOpen(false)} onSave={saveDatabaseConfig} currentConfig={supabaseConfig} />
-        <ProductDetailModal 
-          isOpen={!!viewProduct} 
-          onClose={() => setViewProduct(null)} 
-          product={viewProduct?.product || null} 
-          marketName={viewProduct?.marketName || ''} 
-          allMarkets={markets} 
-          onCompareClick={handleCompareClick} 
-          canGoBack={!!previousViewState} 
-          onBack={handleRestorePreviousView} 
-          showComparisons={showCheaperOnly} 
-          catalogEndDate={viewProduct?.catalogEndDate} 
-          onPrev={handlePrevProductInModal}
-          onNext={handleNextProductInModal}
-          hasPrev={Boolean(viewProduct?.productList && viewProduct.currentIndex !== undefined && viewProduct.currentIndex > 0)}
-          hasNext={Boolean(viewProduct?.productList && viewProduct.currentIndex !== undefined && viewProduct.currentIndex < viewProduct.productList.length - 1)}
-          currentIndex={viewProduct?.currentIndex}
-          totalCount={viewProduct?.productList?.length}
-        />
+        {(() => {
+          const resolveModalMarketId = (item?: { product: DiscountProduct; marketName: string; marketId?: string } | null) => {
+            if (!item) return '';
+            return (
+              item.marketId ||
+              (item.product as any)?.marketId ||
+              markets.find(m => m.name.trim().toLowerCase() === (item.marketName || '').trim().toLowerCase())?.id ||
+              ''
+            );
+          };
+          const modalMarketId = resolveModalMarketId(viewProduct);
+
+          return (
+            <ProductDetailModal 
+              isOpen={!!viewProduct} 
+              onClose={() => setViewProduct(null)} 
+              product={viewProduct?.product || null} 
+              marketName={viewProduct?.marketName || ''} 
+              allMarkets={markets} 
+              onCompareClick={handleCompareClick} 
+              canGoBack={!!previousViewState} 
+              onBack={handleRestorePreviousView} 
+              showComparisons={showCheaperOnly} 
+              catalogEndDate={viewProduct?.catalogEndDate} 
+              currentIndex={viewProduct?.currentIndex}
+              totalCount={viewProduct?.productList?.length}
+              productList={viewProduct?.productList}
+              onSelectIndex={handleSelectIndexInModal}
+              isFavorite={Boolean(viewProduct && modalMarketId && isFavorite(viewProduct.product.productName || '', modalMarketId))}
+              onToggleFavorite={viewProduct && modalMarketId ? () => toggleFavorite(viewProduct.product, modalMarketId) : undefined}
+              onEnsureFavorite={viewProduct && modalMarketId ? () => ensureFavorite(viewProduct.product, modalMarketId) : undefined}
+              checkIsFavorite={(item) => {
+                const mId = resolveModalMarketId(item);
+                return Boolean(mId && isFavorite(item.product.productName || '', mId));
+              }}
+              onToggleFavoriteItem={(item) => {
+                const mId = resolveModalMarketId(item);
+                if (mId) toggleFavorite(item.product, mId);
+              }}
+              onEnsureFavoriteItem={(item) => {
+                const mId = resolveModalMarketId(item);
+                if (mId) ensureFavorite(item.product, mId);
+              }}
+            />
+          );
+        })()}
         
         <InstagramViewer 
           isOpen={!!instagramViewerData} 
