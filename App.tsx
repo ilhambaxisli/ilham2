@@ -875,6 +875,10 @@ const App: React.FC = () => {
     }
     setShowCheaperOnly(active);
     if (active) {
+      setActiveMarketId(null);
+      setSelectedCategoryFilter(null);
+      setActiveCategoryDropdown(null);
+      setIsMarketSwitcherOpen(false);
       setShowFavorites(false);
       setIsProcessingCheaper(true);
       setDeferredCheaperOnly(false);
@@ -1657,7 +1661,7 @@ const App: React.FC = () => {
           />
 
           {/* --- ACTIVE MARKET HEADER (Only when a market is selected) --- */}
-          {!isLoading && !showFavorites && activeMarketId !== null && activeMarketObj ? (
+          {!isLoading && !showFavorites && !showCheaperOnly && activeMarketId !== null && activeMarketObj ? (
             <>
               {isMarketSwitcherOpen && (
                 <div 
@@ -2021,6 +2025,18 @@ const App: React.FC = () => {
                               </div>
                               <span className="truncate">Geri («{debouncedSearchQuery}»)</span>
                             </button>
+                          ) : showCheaperOnly ? (
+                            <button
+                              type="button"
+                              onClick={() => handleShowCheaperOnlyChange(false)}
+                              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer min-w-0"
+                              title="Fürsətlərdən çıx və geri qayıt"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs shrink-0">
+                                <ArrowLeft className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="truncate">Geri (Ümumi fürsətlər)</span>
+                            </button>
                           ) : (
                             <span className="text-xs sm:text-sm font-bold text-gray-700">Nəticələr</span>
                           )}
@@ -2201,19 +2217,35 @@ const App: React.FC = () => {
                                       variant="compact"
                                       onClick={() => {
                                         if (!isAdmin) {
-                                          const featuredList = sampleFeaturedProducts.map(s => ({
-                                            product: s.product,
-                                            marketName: s.market.name,
-                                            marketId: s.market.id,
-                                            catalogEndDate: s.market.catalogs?.[0]?.endDate
+                                          const mktCatalogs = market.catalogs || [];
+                                          const selectedCatId = activeCatalogByMarket[market.id] || (mktCatalogs[0]?.id || null);
+                                          const defaultCatalog = mktCatalogs.find(c => c.id === selectedCatId) || (mktCatalogs.length > 0 ? mktCatalogs[0] : null);
+                                          const targetCatalog = mktCatalogs.find(c => (c.products || []).includes(product)) || defaultCatalog;
+                                          const rawMarketProds = targetCatalog ? (targetCatalog.products || []) : (market.products || []);
+
+                                          const catMap = new Map<string, DiscountProduct[]>();
+                                          rawMarketProds.forEach(p => {
+                                            const cat = (p.category || 'Digər').trim() || 'Digər';
+                                            if (!catMap.has(cat)) catMap.set(cat, []);
+                                            catMap.get(cat)!.push(p);
+                                          });
+                                          const orderedMarketProds = catMap.size > 1 ? Array.from(catMap.values()).flat() : rawMarketProds;
+
+                                          const marketModalList = (orderedMarketProds.length > 0 ? orderedMarketProds : [product]).map(p => ({
+                                            product: p,
+                                            marketName: market.name,
+                                            marketId: market.id,
+                                            catalogEndDate: targetCatalog?.endDate
                                           }));
+                                          const clickedIdx = marketModalList.findIndex(item => item.product === product);
+
                                           setViewProduct({ 
                                             product, 
                                             marketName: market.name, 
                                             marketId: market.id,
-                                            catalogEndDate: market.catalogs?.[0]?.endDate,
-                                            productList: featuredList,
-                                            currentIndex: idx
+                                            catalogEndDate: targetCatalog?.endDate,
+                                            productList: marketModalList,
+                                            currentIndex: clickedIdx >= 0 ? clickedIdx : 0
                                           });
                                         }
                                       }}

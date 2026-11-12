@@ -534,8 +534,8 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
             )}
           </div>
 
-          {/* Right: Clock Icon & Remaining Days badge (hidden when hideCountdown is true) */}
-          {!hideCountdown && (() => {
+          {/* Right: Clock Icon & Remaining Days badge (hidden when hideCountdown or 3-col grid mode is active) */}
+          {!hideCountdown && !isThreeColMobile && (() => {
             const rawEndDate = extractProductEndDate(product, catalogEndDate);
             const countdownInfo = calculateDaysLeft(rawEndDate);
 
