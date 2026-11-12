@@ -13,6 +13,7 @@ import EditMarketModal from './components/EditMarketModal';
 import EditProductModal from './components/EditProductModal';
 import DatabaseModal from './components/DatabaseModal';
 import ProductDetailModal from './components/ProductDetailModal';
+import OpportunityDetailModal from './components/OpportunityDetailModal';
 import SocialDealsModal from './components/SocialDealsModal';
 import { MarketData, DiscountProduct, BannerData, SupabaseConfig, Catalog, FavoriteItem } from './types';
 import * as supabaseService from './services/supabase';
@@ -847,6 +848,7 @@ const App: React.FC = () => {
     productList?: { product: DiscountProduct; marketName: string; marketId?: string; catalogEndDate?: string }[];
     currentIndex?: number;
   } | null>(null);
+  const [opportunityModalIndex, setOpportunityModalIndex] = useState<number | null>(null);
 
   const handleSelectIndexInModal = (newIdx: number) => {
     setViewProduct(prev => {
@@ -1464,6 +1466,7 @@ const App: React.FC = () => {
     setDebouncedSearchQuery(productName);
     setActiveMarketId(targetMarketId);
     setViewProduct(null);
+    setOpportunityModalIndex(null);
   };
 
   const handleRestorePreviousView = () => {
@@ -1493,6 +1496,7 @@ const App: React.FC = () => {
     setShowFavorites(false);
     setIsSearching(false);
     setViewProduct(null);
+    setOpportunityModalIndex(null);
     setPreviousViewState(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1525,6 +1529,7 @@ const App: React.FC = () => {
   // Check if any modal is currently open
   const hasOpenModal = Boolean(
     viewProduct ||
+    opportunityModalIndex !== null ||
     instagramViewerData ||
     isScannerOpen ||
     isLoginModalOpen ||
@@ -1553,6 +1558,7 @@ const App: React.FC = () => {
 
   const closeAllModals = useCallback(() => {
     setViewProduct(null);
+    setOpportunityModalIndex(null);
     setInstagramViewerData(null);
     setIsScannerOpen(false);
     setIsLoginModalOpen(false);
@@ -2075,7 +2081,14 @@ const App: React.FC = () => {
                         {showCheaperOnly ? (
                             <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4 mt-4 sm:mt-6`}>
                                 {groupedOpportunities.slice(0, visibleProductCount).map((group, idx) => (
-                                    <GroupedProductCard key={`${group.productName}-${idx}`} productName={group.productName} category={group.category} imageUrl={group.imageUrl} variants={group.variants} />
+                                    <GroupedProductCard 
+                                      key={`${group.productName}-${idx}`} 
+                                      productName={group.productName} 
+                                      category={group.category} 
+                                      imageUrl={group.imageUrl} 
+                                      variants={group.variants}
+                                      onClick={() => setOpportunityModalIndex(idx)}
+                                    />
                                 ))}
                             </div>
                         ) : (
@@ -2857,6 +2870,19 @@ const App: React.FC = () => {
             />
           );
         })()}
+
+        <OpportunityDetailModal
+          isOpen={opportunityModalIndex !== null}
+          onClose={() => setOpportunityModalIndex(null)}
+          items={groupedOpportunities}
+          initialIndex={opportunityModalIndex ?? 0}
+          allMarkets={markets}
+          onSelectIndex={(newIdx) => setOpportunityModalIndex(newIdx)}
+          onMarketClick={handleCompareClick}
+          checkIsFavorite={(productName, marketId) => isFavorite(productName, marketId)}
+          onToggleFavorite={(prod, marketId) => toggleFavorite(prod, marketId)}
+          onEnsureFavorite={(prod, marketId) => ensureFavorite(prod, marketId)}
+        />
         
         <InstagramViewer 
           isOpen={!!instagramViewerData} 
