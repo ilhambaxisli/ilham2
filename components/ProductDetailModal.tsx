@@ -49,20 +49,20 @@ interface ProductDetailModalProps {
   onSelectMarketInModal?: (marketId: string) => void;
 }
 
-const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  product, 
-  marketName,
+interface ProductDetailModalContentProps extends ProductDetailModalProps {
+  items: ModalProductItem[];
+}
+
+const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
+  items,
+  onClose,
   allMarkets,
   onCompareClick,
   canGoBack,
   onBack,
   showComparisons = false,
-  catalogEndDate,
   currentIndex = 0,
   totalCount,
-  productList,
   onSelectIndex,
   isFavorite = false,
   onToggleFavorite,
@@ -72,31 +72,28 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onEnsureFavoriteItem,
   onSelectMarketInModal
 }) => {
-  const items: ModalProductItem[] = useMemo(() => {
-    if (productList && productList.length > 0) return productList;
-    if (product) return [{ product, marketName, catalogEndDate }];
-    return [];
-  }, [productList, product, marketName, catalogEndDate]);
-
   const effectiveTotal = totalCount ?? items.length;
+  const clampedPropIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), currentIndex));
 
-  const [activeIdx, setActiveIdx] = useState<number>(currentIndex);
+  const [activeIdx, setActiveIdx] = useState<number>(clampedPropIdx);
   const [burstSlideIdx, setBurstSlideIdx] = useState<number | null>(null);
   const [heartBurstPhase, setHeartBurstPhase] = useState<'hidden' | 'pop' | 'fade'>('hidden');
   const [isMarketDropdownOpen, setIsMarketDropdownOpen] = useState<boolean>(false);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const activeIdxRef = useRef<number>(currentIndex);
+  const activeIdxRef = useRef<number>(clampedPropIdx);
+  const targetScrollIdxRef = useRef<number>(clampedPropIdx);
   const prevItemsRef = useRef<ModalProductItem[]>(items);
-  const wasOpenRef = useRef<boolean>(false);
+  const needsScrollSyncRef = useRef<boolean>(true);
+  const userInteractedRef = useRef<boolean>(false);
+  const isProgrammaticScrollRef = useRef<boolean>(true);
   const lastTapTimeRef = useRef<number>(0);
   const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTouchTimeRef = useRef<number>(0);
   const burstTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // Strong iOS/Android background body scroll lock while modal is open
-  useEffect(() => {
-    if (!isOpen) return;
+  // Strong iOS/Android background body scroll lock inside useLayoutEffect so viewport size is locked before measuring scroller height
+  useLayoutEffect(() => {
     const savedScrollY = window.scrollY;
     const originalPosition = document.body.style.position;
     const originalTop = document.body.style.top;
@@ -121,31 +118,96 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       document.body.style.overscrollBehavior = originalOverscroll;
       window.scrollTo(0, savedScrollY);
     };
-  }, [isOpen]);
+  }, []);
 
-  // Snap scroller synchronously to currentIndex when modal opens or productList/index changes
+  const snapToSlideInstant = useCallback((idx: number): boolean => {
+    const el = scrollerRef.current;
+    if (!el || el.clientHeight <= 0) return false;
+    const targetSlide = el.children[idx] as HTMLElement | undefined;
+    if (idx > 0 && (!targetSlide || targetSlide.offsetTop <= 0)) {
+      return false;
+    }
+    const targetTop = targetSlide ? targetSlide.offsetTop : idx * el.clientHeight;
+    const prevSnap = el.style.scrollSnapType;
+    el.style.scrollSnapType = 'none';
+    el.scrollTop = targetTop;
+    void el.scrollTop;
+    el.style.scrollSnapType = prevSnap;
+    return Math.abs(el.scrollTop - targetTop) <= 4;
+  }, []);
+
+  // Snap scroller synchronously on mount or when product list / external index changes; StrictMode-safe via needsScrollSyncRef
   useLayoutEffect(() => {
-    if (!isOpen) {
-      wasOpenRef.current = false;
-      setIsMarketDropdownOpen(false);
-      return;
+    const el = scrollerRef.current;
+    const listChanged = prevItemsRef.current !== items;
+    const indexChangedExternally = clampedPropIdx !== activeIdxRef.current;
+
+    if (listChanged || indexChangedExternally) {
+      needsScrollSyncRef.current = true;
+      prevItemsRef.current = items;
     }
 
-    const el = scrollerRef.current;
-    const clampedIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), currentIndex));
-    const justOpened = !wasOpenRef.current;
-    const listChanged = prevItemsRef.current !== items;
-    wasOpenRef.current = true;
-    prevItemsRef.current = items;
+    if (!needsScrollSyncRef.current) return;
 
-    if (justOpened || listChanged || clampedIdx !== activeIdxRef.current) {
-      activeIdxRef.current = clampedIdx;
-      setActiveIdx(clampedIdx);
-      if (el && el.clientHeight > 0) {
-        el.scrollTop = clampedIdx * el.clientHeight;
+    userInteractedRef.current = false;
+    isProgrammaticScrollRef.current = true;
+    targetScrollIdxRef.current = clampedPropIdx;
+    activeIdxRef.current = clampedPropIdx;
+    setActiveIdx(clampedPropIdx);
+    setIsMarketDropdownOpen(false);
+
+    snapToSlideInstant(clampedPropIdx);
+
+    let cancelled = false;
+    let rafId: number | null = null;
+    let totalFrames = 0;
+    let stableFrames = 0;
+
+    const verifyPosition = () => {
+      if (cancelled) return;
+      if (userInteractedRef.current) {
+        needsScrollSyncRef.current = false;
+        isProgrammaticScrollRef.current = false;
+        return;
+      }
+
+      const ok = snapToSlideInstant(targetScrollIdxRef.current);
+      totalFrames += 1;
+      stableFrames = ok ? stableFrames + 1 : 0;
+
+      // Require multiple consecutive confirmed frames so Tailwind CDN async style injection cannot knock scrollTop back to 0
+      if ((stableFrames < 5 && totalFrames < 30)) {
+        rafId = requestAnimationFrame(verifyPosition);
+      } else {
+        needsScrollSyncRef.current = false;
+        isProgrammaticScrollRef.current = false;
+      }
+    };
+
+    rafId = requestAnimationFrame(verifyPosition);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && el) {
+      ro = new ResizeObserver(() => {
+        if (cancelled || userInteractedRef.current) return;
+        snapToSlideInstant(targetScrollIdxRef.current);
+      });
+      ro.observe(el);
+      if (el.firstElementChild) {
+        ro.observe(el.firstElementChild);
+      }
+      const targetChild = el.children[clampedPropIdx];
+      if (targetChild && targetChild !== el.firstElementChild) {
+        ro.observe(targetChild);
       }
     }
-  }, [isOpen, currentIndex, items]);
+
+    return () => {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      ro?.disconnect();
+    };
+  }, [clampedPropIdx, items, snapToSlideInstant]);
 
   useEffect(() => {
     return () => {
@@ -153,19 +215,32 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     };
   }, []);
 
+  const markUserInteraction = useCallback(() => {
+    userInteractedRef.current = true;
+    isProgrammaticScrollRef.current = false;
+  }, []);
+
   const scrollToIndex = useCallback((targetIdx: number) => {
     const el = scrollerRef.current;
     if (!el) return;
+    markUserInteraction();
     const clamped = Math.max(0, Math.min(items.length - 1, targetIdx));
+    const targetSlide = el.children[clamped] as HTMLElement | undefined;
+    const targetTop = targetSlide && (clamped === 0 || targetSlide.offsetTop > 0)
+      ? targetSlide.offsetTop
+      : clamped * el.clientHeight;
     el.scrollTo({
-      top: clamped * el.clientHeight,
+      top: targetTop,
       behavior: 'smooth'
     });
-  }, [items.length]);
+  }, [items.length, markUserInteraction]);
 
   const handleScroll = () => {
     const el = scrollerRef.current;
     if (!el || el.clientHeight === 0 || items.length === 0) return;
+    if (isProgrammaticScrollRef.current && !userInteractedRef.current) {
+      return;
+    }
     const newIdx = Math.max(0, Math.min(items.length - 1, Math.round(el.scrollTop / el.clientHeight)));
     if (newIdx !== activeIdxRef.current) {
       activeIdxRef.current = newIdx;
@@ -177,7 +252,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   // Keyboard navigation
   useEffect(() => {
-    if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown' || e.key === 'PageDown') {
         if (activeIdxRef.current < items.length - 1) {
@@ -195,7 +269,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, items.length, scrollToIndex, onClose]);
+  }, [items.length, scrollToIndex, onClose]);
 
   const parsePriceNumber = (val: any): number => {
     if (val === null || val === undefined) return NaN;
@@ -225,7 +299,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     return map;
   }, [allMarkets]);
 
-  const activeItem = items[activeIdx] || (product ? { product, marketName, catalogEndDate } : null);
+  const activeItem = items[activeIdx] || items[0] || null;
 
   // Comparison list for currently active item when Fürsətlər mode is active
   const comparisonData = useMemo(() => {
@@ -326,8 +400,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     });
   }, [onEnsureFavoriteItem, onEnsureFavorite, onToggleFavorite]);
 
-  if (!isOpen || items.length === 0) return null;
-
   const hasPrev = activeIdx > 0;
   const hasNext = activeIdx < items.length - 1;
 
@@ -380,6 +452,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       <div
         ref={scrollerRef}
         onScroll={handleScroll}
+        onTouchStart={markUserInteraction}
+        onWheel={markUserInteraction}
+        onPointerDown={markUserInteraction}
         className="relative z-10 w-full h-full overflow-y-auto snap-y snap-mandatory overscroll-y-none scrollbar-hide touch-pan-y [overflow-anchor:none]"
       >
         {items.map((item, idx) => {
@@ -816,6 +891,20 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       </div>
     </div>
   );
+};
+
+const ProductDetailModal: React.FC<ProductDetailModalProps> = (props) => {
+  const items: ModalProductItem[] = useMemo(() => {
+    if (props.productList && props.productList.length > 0) return props.productList;
+    if (props.product) {
+      return [{ product: props.product, marketName: props.marketName, catalogEndDate: props.catalogEndDate }];
+    }
+    return [];
+  }, [props.productList, props.product, props.marketName, props.catalogEndDate]);
+
+  if (!props.isOpen || items.length === 0) return null;
+
+  return <ProductDetailModalContent {...props} items={items} />;
 };
 
 export default ProductDetailModal;

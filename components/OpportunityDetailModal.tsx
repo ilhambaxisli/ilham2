@@ -40,8 +40,7 @@ interface OpportunityDetailModalProps {
   onEnsureFavorite?: (product: DiscountProduct, marketId: string) => void;
 }
 
-const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
-  isOpen,
+const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
   onClose,
   items,
   initialIndex,
@@ -52,21 +51,26 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
   onToggleFavorite,
   onEnsureFavorite
 }) => {
-  const [activeIdx, setActiveIdx] = useState<number>(initialIndex);
+  const clampedPropIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), initialIndex));
+
+  const [activeIdx, setActiveIdx] = useState<number>(clampedPropIdx);
   const [burstSlideIdx, setBurstSlideIdx] = useState<number | null>(null);
   const [heartBurstPhase, setHeartBurstPhase] = useState<'hidden' | 'pop' | 'fade'>('hidden');
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const activeIdxRef = useRef<number>(initialIndex);
-  const wasOpenRef = useRef<boolean>(false);
+  const activeIdxRef = useRef<number>(clampedPropIdx);
+  const targetScrollIdxRef = useRef<number>(clampedPropIdx);
+  const prevItemsRef = useRef<OpportunityItem[]>(items);
+  const needsScrollSyncRef = useRef<boolean>(true);
+  const userInteractedRef = useRef<boolean>(false);
+  const isProgrammaticScrollRef = useRef<boolean>(true);
   const lastTapTimeRef = useRef<number>(0);
   const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTouchTimeRef = useRef<number>(0);
   const burstTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // Strong iOS/Android background body scroll lock while modal is open
-  useEffect(() => {
-    if (!isOpen) return;
+  // Strong iOS/Android background body scroll lock inside useLayoutEffect so viewport height is locked before measuring scroller
+  useLayoutEffect(() => {
     const savedScrollY = window.scrollY;
     const originalPosition = document.body.style.position;
     const originalTop = document.body.style.top;
@@ -91,28 +95,94 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
       document.body.style.overscrollBehavior = originalOverscroll;
       window.scrollTo(0, savedScrollY);
     };
-  }, [isOpen]);
+  }, []);
 
-  // Snap scroller synchronously when modal opens or external index changes
+  const snapToSlideInstant = useCallback((idx: number): boolean => {
+    const el = scrollerRef.current;
+    if (!el || el.clientHeight <= 0) return false;
+    const targetSlide = el.children[idx] as HTMLElement | undefined;
+    if (idx > 0 && (!targetSlide || targetSlide.offsetTop <= 0)) {
+      return false;
+    }
+    const targetTop = targetSlide ? targetSlide.offsetTop : idx * el.clientHeight;
+    const prevSnap = el.style.scrollSnapType;
+    el.style.scrollSnapType = 'none';
+    el.scrollTop = targetTop;
+    void el.scrollTop;
+    el.style.scrollSnapType = prevSnap;
+    return Math.abs(el.scrollTop - targetTop) <= 4;
+  }, []);
+
+  // Snap scroller synchronously on mount or when external index/items change; StrictMode-safe via needsScrollSyncRef
   useLayoutEffect(() => {
-    if (!isOpen) {
-      wasOpenRef.current = false;
-      return;
+    const el = scrollerRef.current;
+    const listChanged = prevItemsRef.current !== items;
+    const indexChangedExternally = clampedPropIdx !== activeIdxRef.current;
+
+    if (listChanged || indexChangedExternally) {
+      needsScrollSyncRef.current = true;
+      prevItemsRef.current = items;
     }
 
-    const el = scrollerRef.current;
-    const clampedIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), initialIndex));
-    const justOpened = !wasOpenRef.current;
-    wasOpenRef.current = true;
+    if (!needsScrollSyncRef.current) return;
 
-    if (justOpened || clampedIdx !== activeIdxRef.current) {
-      activeIdxRef.current = clampedIdx;
-      setActiveIdx(clampedIdx);
-      if (el && el.clientHeight > 0) {
-        el.scrollTop = clampedIdx * el.clientHeight;
+    userInteractedRef.current = false;
+    isProgrammaticScrollRef.current = true;
+    targetScrollIdxRef.current = clampedPropIdx;
+    activeIdxRef.current = clampedPropIdx;
+    setActiveIdx(clampedPropIdx);
+
+    snapToSlideInstant(clampedPropIdx);
+
+    let cancelled = false;
+    let rafId: number | null = null;
+    let totalFrames = 0;
+    let stableFrames = 0;
+
+    const verifyPosition = () => {
+      if (cancelled) return;
+      if (userInteractedRef.current) {
+        needsScrollSyncRef.current = false;
+        isProgrammaticScrollRef.current = false;
+        return;
+      }
+
+      const ok = snapToSlideInstant(targetScrollIdxRef.current);
+      totalFrames += 1;
+      stableFrames = ok ? stableFrames + 1 : 0;
+
+      if (stableFrames < 5 && totalFrames < 30) {
+        rafId = requestAnimationFrame(verifyPosition);
+      } else {
+        needsScrollSyncRef.current = false;
+        isProgrammaticScrollRef.current = false;
+      }
+    };
+
+    rafId = requestAnimationFrame(verifyPosition);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && el) {
+      ro = new ResizeObserver(() => {
+        if (cancelled || userInteractedRef.current) return;
+        snapToSlideInstant(targetScrollIdxRef.current);
+      });
+      ro.observe(el);
+      if (el.firstElementChild) {
+        ro.observe(el.firstElementChild);
+      }
+      const targetChild = el.children[clampedPropIdx];
+      if (targetChild && targetChild !== el.firstElementChild) {
+        ro.observe(targetChild);
       }
     }
-  }, [isOpen, initialIndex, items.length]);
+
+    return () => {
+      cancelled = true;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      ro?.disconnect();
+    };
+  }, [clampedPropIdx, items, snapToSlideInstant]);
 
   useEffect(() => {
     return () => {
@@ -120,19 +190,32 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
     };
   }, []);
 
+  const markUserInteraction = useCallback(() => {
+    userInteractedRef.current = true;
+    isProgrammaticScrollRef.current = false;
+  }, []);
+
   const scrollToIndex = useCallback((targetIdx: number) => {
     const el = scrollerRef.current;
     if (!el) return;
+    markUserInteraction();
     const clamped = Math.max(0, Math.min(items.length - 1, targetIdx));
+    const targetSlide = el.children[clamped] as HTMLElement | undefined;
+    const targetTop = targetSlide && (clamped === 0 || targetSlide.offsetTop > 0)
+      ? targetSlide.offsetTop
+      : clamped * el.clientHeight;
     el.scrollTo({
-      top: clamped * el.clientHeight,
+      top: targetTop,
       behavior: 'smooth'
     });
-  }, [items.length]);
+  }, [items.length, markUserInteraction]);
 
   const handleScroll = () => {
     const el = scrollerRef.current;
     if (!el || el.clientHeight === 0 || items.length === 0) return;
+    if (isProgrammaticScrollRef.current && !userInteractedRef.current) {
+      return;
+    }
     const newIdx = Math.max(0, Math.min(items.length - 1, Math.round(el.scrollTop / el.clientHeight)));
     if (newIdx !== activeIdxRef.current) {
       activeIdxRef.current = newIdx;
@@ -143,7 +226,6 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
 
   // Keyboard navigation
   useEffect(() => {
-    if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown' || e.key === 'PageDown') {
         if (activeIdxRef.current < items.length - 1) {
@@ -161,7 +243,7 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, items.length, scrollToIndex, onClose]);
+  }, [items.length, scrollToIndex, onClose]);
 
   const resolveProductForMarket = useCallback((item: OpportunityItem, cheapestVariant: OpportunityVariant): DiscountProduct => {
     const mkt = allMarkets.find(m => m.id === cheapestVariant.marketId);
@@ -208,8 +290,6 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
   }, [onEnsureFavorite, resolveProductForMarket]);
 
   const totalCount = items.length;
-  if (!isOpen || totalCount === 0) return null;
-
   const hasPrev = activeIdx > 0;
   const hasNext = activeIdx < totalCount - 1;
 
@@ -258,6 +338,9 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
       <div
         ref={scrollerRef}
         onScroll={handleScroll}
+        onTouchStart={markUserInteraction}
+        onWheel={markUserInteraction}
+        onPointerDown={markUserInteraction}
         className="relative z-10 w-full h-full overflow-y-auto snap-y snap-mandatory overscroll-y-none scrollbar-hide touch-pan-y [overflow-anchor:none]"
       >
         {items.map((item, idx) => {
@@ -562,6 +645,11 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
       </div>
     </div>
   );
+};
+
+const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = (props) => {
+  if (!props.isOpen || props.items.length === 0) return null;
+  return <OpportunityDetailModalContent {...props} />;
 };
 
 export default OpportunityDetailModal;
