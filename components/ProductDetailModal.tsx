@@ -46,6 +46,7 @@ interface ProductDetailModalProps {
   checkIsFavorite?: (item: ModalProductItem) => boolean;
   onToggleFavoriteItem?: (item: ModalProductItem) => void;
   onEnsureFavoriteItem?: (item: ModalProductItem) => void;
+  onSelectMarketInModal?: (marketId: string) => void;
 }
 
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ 
@@ -68,7 +69,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onEnsureFavorite,
   checkIsFavorite,
   onToggleFavoriteItem,
-  onEnsureFavoriteItem
+  onEnsureFavoriteItem,
+  onSelectMarketInModal
 }) => {
   const items: ModalProductItem[] = useMemo(() => {
     if (productList && productList.length > 0) return productList;
@@ -81,9 +83,11 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [activeIdx, setActiveIdx] = useState<number>(currentIndex);
   const [burstSlideIdx, setBurstSlideIdx] = useState<number | null>(null);
   const [heartBurstPhase, setHeartBurstPhase] = useState<'hidden' | 'pop' | 'fade'>('hidden');
+  const [isMarketDropdownOpen, setIsMarketDropdownOpen] = useState<boolean>(false);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const activeIdxRef = useRef<number>(currentIndex);
+  const prevItemsRef = useRef<ModalProductItem[]>(items);
   const wasOpenRef = useRef<boolean>(false);
   const lastTapTimeRef = useRef<number>(0);
   const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -119,26 +123,29 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     };
   }, [isOpen]);
 
-  // Snap scroller synchronously to currentIndex when modal opens or external index changes
+  // Snap scroller synchronously to currentIndex when modal opens or productList/index changes
   useLayoutEffect(() => {
     if (!isOpen) {
       wasOpenRef.current = false;
+      setIsMarketDropdownOpen(false);
       return;
     }
 
     const el = scrollerRef.current;
     const clampedIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), currentIndex));
     const justOpened = !wasOpenRef.current;
+    const listChanged = prevItemsRef.current !== items;
     wasOpenRef.current = true;
+    prevItemsRef.current = items;
 
-    if (justOpened || clampedIdx !== activeIdxRef.current) {
+    if (justOpened || listChanged || clampedIdx !== activeIdxRef.current) {
       activeIdxRef.current = clampedIdx;
       setActiveIdx(clampedIdx);
       if (el && el.clientHeight > 0) {
         el.scrollTop = clampedIdx * el.clientHeight;
       }
     }
-  }, [isOpen, currentIndex, items.length]);
+  }, [isOpen, currentIndex, items]);
 
   useEffect(() => {
     return () => {
@@ -163,6 +170,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     if (newIdx !== activeIdxRef.current) {
       activeIdxRef.current = newIdx;
       setActiveIdx(newIdx);
+      setIsMarketDropdownOpen(false);
       onSelectIndex?.(newIdx);
     }
   };
@@ -324,10 +332,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const hasNext = activeIdx < items.length - 1;
 
   return (
-    <div className="fixed inset-0 z-[100] select-none overflow-hidden">
-      {/* Dark Backdrop */}
+    <div className="fixed inset-0 z-[100] select-none overflow-hidden bg-white sm:bg-black/80">
+      {/* Dark Backdrop on larger screens */}
       <div 
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-none"
+        className="hidden sm:block absolute inset-0 backdrop-blur-sm pointer-events-none"
       />
 
       {/* TikTok-style Vertical Navigation Floating Dock (Desktop & Tablet) */}
@@ -382,9 +390,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             return (
               <div
                 key={`slide-${idx}`}
-                className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
+                className="w-full h-full shrink-0 snap-start snap-always flex items-stretch sm:items-center justify-center p-0"
               >
-                <div className="w-full max-w-sm min-h-[470px] sm:min-h-[510px] rounded-2xl bg-white/95 shadow-2xl" />
+                <div className="w-full sm:max-w-lg h-full bg-white" />
               </div>
             );
           }
@@ -419,7 +427,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   onClose();
                 }
               }}
-              className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
+              className="w-full h-full shrink-0 snap-start snap-always flex items-stretch sm:items-center justify-center p-0"
             >
               <div
                 onClick={(e) => e.stopPropagation()}
@@ -455,47 +463,145 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   if (target.closest('button') || target.closest('a')) return;
                   triggerHeartBurst(item, idx);
                 }}
-                className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden min-h-[470px] sm:min-h-[510px] max-h-[90dvh] z-10 border border-gray-100"
+                className="relative w-full sm:max-w-lg h-full bg-white flex flex-col overflow-hidden z-10 rounded-none border-0 sm:border-x sm:border-gray-100 sm:shadow-2xl"
               >
-                {/* Top Drag Pill */}
-                <div className="w-full flex items-center justify-center pt-2 pb-1 bg-white shrink-0">
-                  <div className="w-10 h-1 rounded-full bg-gray-300" />
-                </div>
-
-                {/* Top Header Bar: Market Logo & Name on Left, Product Count (4/72) & Close on Right */}
-                <div className="w-full px-3.5 py-2 bg-white border-b border-gray-100 flex items-center justify-between gap-2 z-20 shrink-0">
-                  <div className="flex items-center gap-2 min-w-0">
+                {/* Full-Screen Top Header Bar: Large Clickable Market Logo & Name on Left, Product Count & Close on Right */}
+                <div className="relative w-full px-4 py-3 sm:py-3.5 bg-white border-b border-gray-100 flex items-center justify-between gap-2.5 z-30 shrink-0">
+                  <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
                     {canGoBack && onBack && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); onBack(); }}
-                        className="p-1 -ml-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors shrink-0"
+                        className="p-1.5 -ml-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors shrink-0 cursor-pointer"
                         title="Geri"
                       >
-                        <ArrowLeft className="w-4 h-4" />
+                        <ArrowLeft className="w-5 h-5" />
                       </button>
                     )}
 
-                    {mkt?.logoUrl ? (
-                      <img 
-                        src={mkt.logoUrl} 
-                        alt={mName} 
-                        className="w-6 h-6 sm:w-7 sm:h-7 object-contain rounded-full bg-white p-0.5 border border-gray-200/90 shadow-2xs shrink-0" 
-                      />
+                    {onSelectMarketInModal ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsMarketDropdownOpen(prev => !prev);
+                        }}
+                        className="flex items-center gap-2.5 sm:gap-3 min-w-0 text-left rounded-xl px-1.5 py-1 -my-1 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
+                        title="Başqa market seç"
+                      >
+                        {mkt?.logoUrl ? (
+                          <img 
+                            src={mkt.logoUrl} 
+                            alt={mName} 
+                            className="w-10 h-10 sm:w-12 sm:h-12 object-contain rounded-xl bg-white p-1 border border-gray-200/90 shadow-xs shrink-0" 
+                          />
+                        ) : (
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 text-emerald-800 font-black text-base sm:text-lg flex items-center justify-center border border-gray-200/90 shadow-xs shrink-0">
+                            {mkt?.logoPlaceholder || mName?.charAt(0) || 'M'}
+                          </div>
+                        )}
+
+                        <span className="font-black text-gray-900 text-lg sm:text-2xl tracking-tight truncate">
+                          {mName}
+                        </span>
+                        <ChevronDown className={`w-5 h-5 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${isMarketDropdownOpen && isCurrentSlide ? 'rotate-180 text-gray-800' : ''}`} />
+                      </button>
                     ) : (
-                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-emerald-100 text-emerald-800 font-black text-xs flex items-center justify-center border border-gray-200/90 shadow-2xs shrink-0">
-                        {mkt?.logoPlaceholder || mName?.charAt(0) || 'M'}
+                      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                        {mkt?.logoUrl ? (
+                          <img 
+                            src={mkt.logoUrl} 
+                            alt={mName} 
+                            className="w-10 h-10 sm:w-12 sm:h-12 object-contain rounded-xl bg-white p-1 border border-gray-200/90 shadow-xs shrink-0" 
+                          />
+                        ) : (
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 text-emerald-800 font-black text-base sm:text-lg flex items-center justify-center border border-gray-200/90 shadow-xs shrink-0">
+                            {mkt?.logoPlaceholder || mName?.charAt(0) || 'M'}
+                          </div>
+                        )}
+
+                        <span className="font-black text-gray-900 text-lg sm:text-2xl tracking-tight truncate">
+                          {mName}
+                        </span>
                       </div>
                     )}
-
-                    <span className="font-extrabold text-gray-900 text-xs sm:text-sm tracking-tight truncate max-w-[120px] xs:max-w-[150px] sm:max-w-[180px]">
-                      {mName}
-                    </span>
                   </div>
+
+                  {/* Click-outside backdrop & Simple Market Dropdown List */}
+                  {isMarketDropdownOpen && isCurrentSlide && onSelectMarketInModal && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsMarketDropdownOpen(false);
+                        }}
+                      />
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute left-4 top-full mt-1 w-64 sm:w-72 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-30 max-h-80 overflow-y-auto animate-[fadeIn_0.15s_ease-out]"
+                      >
+                        <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                          <span>Marketlər</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsMarketDropdownOpen(false);
+                            }}
+                            className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        {allMarkets
+                          .map((m) => {
+                            const mProds = m.catalogs && m.catalogs.length > 0
+                              ? (m.catalogs[0]?.products || [])
+                              : (m.products || []);
+                            return { market: m, count: mProds.length };
+                          })
+                          .filter(entry => entry.count > 0)
+                          .map(({ market: m, count }) => {
+                            const isCur = mkt?.id === m.id || m.name.trim().toLowerCase() === (mName || '').trim().toLowerCase();
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsMarketDropdownOpen(false);
+                                  onSelectMarketInModal(m.id);
+                                }}
+                                className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                                  isCur
+                                    ? 'bg-gray-100 font-bold text-gray-900'
+                                    : 'text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-6 h-6 rounded-lg bg-white border border-gray-200/80 flex items-center justify-center overflow-hidden shrink-0">
+                                    {m.logoUrl ? (
+                                      <img src={m.logoUrl} alt={m.name} className="w-full h-full object-contain p-0.5" />
+                                    ) : (
+                                      <span className="text-emerald-700 font-bold text-[10px]">{m.logoPlaceholder}</span>
+                                    )}
+                                  </div>
+                                  <span className="truncate">{m.name}</span>
+                                </div>
+                                <span className="text-[10px] text-gray-500 bg-gray-100 font-semibold px-2 py-0.5 rounded-full shrink-0">
+                                  {count}
+                                </span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </>
+                  )}
 
                   <div className="flex items-center gap-2 shrink-0">
                     {effectiveTotal > 0 && (
                       <div 
-                        className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-50 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
+                        className="inline-flex items-center gap-0.5 px-3 py-1 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-xs sm:text-sm shadow-2xs tracking-tight select-none"
                         title={`Məhsul: ${idx + 1} / ${effectiveTotal}`}
                       >
                         <span className="text-emerald-600 font-black">{idx + 1}</span>
@@ -506,21 +612,21 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
                     <button 
                       onClick={(e) => { e.stopPropagation(); onClose(); }}
-                      className="p-1 sm:p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
+                      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
                       title="Bağla"
                     >
-                      <X className="w-5 h-5" />
+                      <X className="w-6 h-6" />
                     </button>
                   </div>
                 </div>
 
                 {/* Product Image */}
-                <div className="relative w-full h-56 sm:h-64 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
+                <div className="relative w-full flex-1 min-h-[240px] max-h-[48dvh] bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
                   <img 
                     src={imgUrl} 
                     alt={cleanName} 
                     draggable={false}
-                    className="w-44 h-44 sm:w-48 sm:h-48 object-contain mix-blend-multiply pointer-events-none select-none"
+                    className="w-56 h-56 sm:w-64 sm:h-64 object-contain mix-blend-multiply pointer-events-none select-none"
                   />
 
                   {/* Double-tap Center Heart Burst Animation */}

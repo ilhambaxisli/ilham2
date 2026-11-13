@@ -864,11 +864,65 @@ const App: React.FC = () => {
       };
     });
   };
+
+  const handleOpenMarketSwipeFeed = (marketId: string) => {
+    const market = sortedMarkets.find(m => m.id === marketId);
+    if (!market) return;
+    const mktCatalogs = market.catalogs || [];
+    const selectedCatId = activeCatalogByMarket[market.id] || (mktCatalogs[0]?.id || null);
+    const defaultCatalog = mktCatalogs.find(c => c.id === selectedCatId) || (mktCatalogs.length > 0 ? mktCatalogs[0] : null);
+    const targetCatalog = defaultCatalog && (defaultCatalog.products || []).length > 0
+      ? defaultCatalog
+      : (mktCatalogs.find(c => (c.products || []).length > 0) || defaultCatalog);
+    const rawMarketProds = targetCatalog ? (targetCatalog.products || []) : (market.products || []);
+    if (rawMarketProds.length === 0) return;
+
+    const catMap = new Map<string, DiscountProduct[]>();
+    rawMarketProds.forEach(p => {
+      const cat = (p.category || 'Digər').trim() || 'Digər';
+      if (!catMap.has(cat)) catMap.set(cat, []);
+      catMap.get(cat)!.push(p);
+    });
+    const orderedMarketProds = catMap.size > 1 ? Array.from(catMap.values()).flat() : rawMarketProds;
+
+    const marketModalList = orderedMarketProds.map(p => ({
+      product: p,
+      marketName: market.name,
+      marketId: market.id,
+      catalogEndDate: targetCatalog?.endDate
+    }));
+
+    setViewProduct({
+      product: marketModalList[0].product,
+      marketName: market.name,
+      marketId: market.id,
+      catalogEndDate: targetCatalog?.endDate,
+      productList: marketModalList,
+      currentIndex: 0
+    });
+  };
   const [previousViewState, setPreviousViewState] = useState<ViewState | null>(null);
   const [instagramViewerData, setInstagramViewerData] = useState<{posts: string[], name: string, initialIndex: number} | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState<string | null>(null);
   const [isMarketSwitcherOpen, setIsMarketSwitcherOpen] = useState(false);
+  const pendingCategoryScrollRef = useRef<{ marketId: string; category: string } | null>(null);
+
+  useEffect(() => {
+    const pending = pendingCategoryScrollRef.current;
+    if (!pending || pending.marketId !== activeMarketId) return;
+    const targetId = `category-section-${pending.marketId}-${encodeURIComponent(pending.category)}`;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(targetId);
+      if (el) {
+        const headerOffset = stickyHeaderRef.current?.offsetHeight || stickyHeaderHeight;
+        const targetY = el.getBoundingClientRect().top + window.scrollY - headerOffset;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+        pendingCategoryScrollRef.current = null;
+      }
+    }, 40);
+    return () => clearTimeout(timer);
+  }, [visibleDetailCount, activeMarketId]);
 
   const handleShowCheaperOnlyChange = (active: boolean) => {
     if (cheaperTimeoutRef.current) {
@@ -2091,8 +2145,18 @@ const App: React.FC = () => {
                                     />
                                 ))}
                             </div>
-                        ) : (
-                            filteredMarketData.map((market) => {
+                        ) : (() => {
+                            const allSearchModalList = filteredMarketData.flatMap(m => {
+                              const mEndDate = m.catalogs?.[0]?.endDate;
+                              return m.filteredProducts.map(p => ({
+                                product: p,
+                                marketName: m.name,
+                                marketId: m.id,
+                                catalogEndDate: mEndDate
+                              }));
+                            });
+
+                            return filteredMarketData.map((market) => {
                               const marketEndDate = market.catalogs?.[0]?.endDate;
                               return (
                                 <div key={market.id} className="bg-white rounded-2xl p-2 sm:p-5 border border-gray-100 shadow-xs mb-5">
@@ -2130,19 +2194,16 @@ const App: React.FC = () => {
                                             hasCheaperAlternative={(product as any)._hasCheaper} 
                                             onClick={() => {
                                               if (!isAdmin) {
-                                                const sList = market.filteredProducts.map(p => ({
-                                                  product: p,
-                                                  marketName: market.name,
-                                                  marketId: market.id,
-                                                  catalogEndDate: marketEndDate
-                                                }));
+                                                const clickedIdx = allSearchModalList.findIndex(
+                                                  item => item.product === product && item.marketId === market.id
+                                                );
                                                 setViewProduct({
                                                   product,
                                                   marketName: market.name,
                                                   marketId: market.id,
                                                   catalogEndDate: marketEndDate,
-                                                  productList: sList,
-                                                  currentIndex: index
+                                                  productList: allSearchModalList,
+                                                  currentIndex: clickedIdx >= 0 ? clickedIdx : 0
                                                 });
                                               }
                                             }} 
@@ -2155,8 +2216,8 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
                               );
-                            })
-                        )}
+                            });
+                        })()}
                     </div>
                   </div>
                 ) : (
@@ -2364,16 +2425,8 @@ const App: React.FC = () => {
                           })();
                           const hasCategories = allCategoriesWithCounts.length > 0 && !(allCategoriesWithCounts.length === 1 && allCategoriesWithCounts[0].name.toLowerCase() === 'digər');
 
-                          // Filter by selected category if user selected one
-                          const effectiveProducts = (selectedCategoryFilter && hasCategories)
-                            ? mktFilteredProducts.filter(p => (p.category || 'Digər').trim() === selectedCategoryFilter)
-                            : mktFilteredProducts;
-
-                          const displayedProducts = effectiveProducts.slice(0, visibleDetailCount);
-                          const hasMore = visibleDetailCount < effectiveProducts.length;
-
-                          // Build complete ordered market product list (ALL products in this market catalog, regardless of category filter/pagination)
-                          // so the modal counter always reflects TOTAL market products (e.g. 4 / 72, NOT category subtotal)
+                          // Build complete ordered market product list (ALL products grouped by category in order)
+                          // so the modal counter always reflects TOTAL market products (e.g. 4 / 72) and categories stay contiguous
                           const fullMarketOrderedProducts: DiscountProduct[] = (() => {
                             if (hasCategories) {
                               const catOrderMap = new Map<string, DiscountProduct[]>();
@@ -2387,6 +2440,10 @@ const App: React.FC = () => {
                             return mktFilteredProducts;
                           })();
 
+                          const orderedForDisplay = hasCategories ? fullMarketOrderedProducts : mktFilteredProducts;
+                          const displayedProducts = orderedForDisplay.slice(0, visibleDetailCount);
+                          const hasMore = visibleDetailCount < orderedForDisplay.length;
+
                           const fullMarketModalList = fullMarketOrderedProducts.map(p => ({
                             product: p,
                             marketName: mkt.name,
@@ -2394,18 +2451,43 @@ const App: React.FC = () => {
                             catalogEndDate: mktCatalog?.endDate
                           }));
 
-                          // Grouping by category when all categories are shown
+                          const scrollToCategorySection = (categoryName: string) => {
+                            const startIdx = fullMarketOrderedProducts.findIndex(
+                              p => ((p.category || 'Digər').trim() || 'Digər') === categoryName
+                            );
+                            const catInfo = allCategoriesWithCounts.find(c => c.name === categoryName);
+                            const neededCount = startIdx >= 0 ? startIdx + (catInfo?.count || 1) + 12 : visibleDetailCount;
+
+                            if (neededCount > visibleDetailCount) {
+                              pendingCategoryScrollRef.current = { marketId: mkt.id, category: categoryName };
+                              setVisibleDetailCount(neededCount);
+                            } else {
+                              pendingCategoryScrollRef.current = null;
+                              requestAnimationFrame(() => {
+                                const targetId = `category-section-${mkt.id}-${encodeURIComponent(categoryName)}`;
+                                const el = document.getElementById(targetId);
+                                if (el) {
+                                  const headerOffset = stickyHeaderRef.current?.offsetHeight || stickyHeaderHeight;
+                                  const targetY = el.getBoundingClientRect().top + window.scrollY - headerOffset;
+                                  window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+                                }
+                              });
+                            }
+                          };
+
+                          // Grouping by category (all categories stay visible)
                           const groupedProductsByCategory: { category: string; products: { product: DiscountProduct; originalIndex: number }[] }[] = [];
-                          if (hasCategories && !selectedCategoryFilter) {
+                          if (hasCategories) {
                             const catMap = new Map<string, { category: string; products: { product: DiscountProduct; originalIndex: number }[] }>();
-                            displayedProducts.forEach((product, idx) => {
+                            displayedProducts.forEach((product) => {
                               const cat = (product.category || 'Digər').trim() || 'Digər';
                               if (!catMap.has(cat)) {
                                 const newGroup = { category: cat, products: [] };
                                 catMap.set(cat, newGroup);
                                 groupedProductsByCategory.push(newGroup);
                               }
-                              catMap.get(cat)!.products.push({ product, originalIndex: idx });
+                              const rawIdx = mktProducts.indexOf(product);
+                              catMap.get(cat)!.products.push({ product, originalIndex: rawIdx >= 0 ? rawIdx : 0 });
                             });
                           }
 
@@ -2450,239 +2532,105 @@ const App: React.FC = () => {
                               {/* Products Grid for this market */}
                               {displayedProducts.length > 0 ? (
                                 hasCategories ? (
-                                  selectedCategoryFilter ? (
-                                    /* Single Category Filtered View */
-                                    <div className="space-y-3">
-                                      {/* Category Header (Sticky right below market header, clickable to toggle categories list) */}
-                                      <div className="relative">
-                                        <div 
-                                          style={{ top: `${stickyHeaderHeight}px` }}
-                                          onClick={() => setActiveCategoryDropdown(prev => prev === 'filter' ? null : 'filter')}
-                                          role="button"
-                                          tabIndex={0}
-                                          title="Kateqoriyanı dəyişmək üçün klikləyin"
-                                          className="sticky z-20 bg-white/95 backdrop-blur-md -mx-2 sm:-mx-4 px-2 sm:px-4 py-2 sm:py-2.5 border-b border-gray-100 flex items-center justify-center relative shadow-2xs transition-[top] duration-150 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none group"
-                                        >
-                                          <div className="flex items-center justify-center gap-2 min-w-0 max-w-[80%] text-center">
-                                            <div className={`w-2.5 sm:w-3 h-7 sm:h-8 rounded-full bg-${mktAccent}-600 shrink-0 group-hover:scale-y-110 transition-transform`}></div>
-                                            <h3 className="font-black text-lg sm:text-2xl text-gray-900 tracking-tight truncate flex items-center gap-2">
-                                              <span>{selectedCategoryFilter}</span>
-                                              <ChevronDown className={`w-5 h-5 sm:w-6 sm:h-6 text-gray-400 group-hover:text-gray-700 transition-transform duration-200 ${activeCategoryDropdown === 'filter' ? 'rotate-180 text-gray-800' : ''}`} />
-                                            </h3>
-                                          </div>
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setSelectedCategoryFilter(null);
-                                              setActiveCategoryDropdown(null);
-                                              setVisibleDetailCount(24);
-                                            }}
-                                            className="absolute right-2 sm:right-4 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 cursor-pointer"
-                                            title="Bütün kateqoriyaları göstər"
-                                          >
-                                            <X className="w-3 h-3" /> Hamısı
-                                          </button>
-                                        </div>
-
-                                        {/* Simple vertical list of category names right underneath the clicked text */}
-                                        {activeCategoryDropdown === 'filter' && (
-                                          <div className="relative z-30">
-                                            {/* Click outside to close (transparent, non-blocking backdrop) */}
-                                            <div 
-                                              className="fixed inset-0 z-20" 
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setActiveCategoryDropdown(null);
-                                              }} 
-                                            />
-                                            <div className="absolute left-0 top-1 w-full max-w-xs sm:max-w-sm bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-30 max-h-72 overflow-y-auto animate-[fadeIn_0.15s_ease-out]">
-                                              <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                                                <span>Kateqoriyalar</span>
-                                                <button 
-                                                  type="button"
-                                                  onClick={(e) => { e.stopPropagation(); setActiveCategoryDropdown(null); }}
-                                                  className="text-gray-400 hover:text-gray-600 p-0.5"
-                                                >
-                                                  <X className="w-3.5 h-3.5" />
-                                                </button>
-                                              </div>
-                                              
-                                              {/* Hamısı Option */}
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setSelectedCategoryFilter(null);
-                                                  setActiveCategoryDropdown(null);
-                                                  setVisibleDetailCount(24);
-                                                }}
-                                                className="w-full text-left px-3.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center justify-between transition-colors cursor-pointer border-b border-gray-50"
-                                              >
-                                                <span className="font-bold text-blue-600">Hamısı (Bütün məhsullar)</span>
-                                                <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-                                                  {mktFilteredProducts.length}
-                                                </span>
-                                              </button>
-
-                                              {/* Individual categories alt alta */}
-                                              {allCategoriesWithCounts.map(cat => {
-                                                const isCurrent = selectedCategoryFilter === cat.name;
-                                                return (
-                                                  <button
-                                                    key={cat.name}
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setSelectedCategoryFilter(cat.name);
-                                                      setActiveCategoryDropdown(null);
-                                                      setVisibleDetailCount(24);
-                                                    }}
-                                                    className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
-                                                      isCurrent 
-                                                        ? 'bg-gray-100 font-bold text-gray-900' 
-                                                        : 'text-gray-700 hover:bg-gray-50'
-                                                    }`}
-                                                  >
-                                                    <span className="truncate">{cat.name}</span>
-                                                    <span className="text-[10px] text-gray-500 bg-gray-100 font-semibold px-2 py-0.5 rounded-full ml-2 shrink-0">
-                                                      {cat.count}
-                                                    </span>
-                                                  </button>
-                                                );
-                                              })}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                      <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
-                                        {displayedProducts.map((product, idx) => (
-                                          <ProductCard 
-                                            key={`${mkt.id}-${product.productName}-${idx}`} 
-                                            product={product} 
-                                            accentColor={mktAccent} 
-                                            catalogEndDate={mktCatalog?.endDate}
-                                            isAdmin={isAdmin} 
-                                            variant="compact"
-                                            isListMode={productViewMode === 'list'}
-                                            isThreeColMobile={productViewMode === 'grid'}
-                                            hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
-                                            onClick={() => {
-                                              if (!isAdmin) {
-                                                const fullIdx = fullMarketModalList.findIndex(item => item.product === product);
-                                                setViewProduct({ 
-                                                  product, 
-                                                  marketName: mkt.name, 
-                                                  marketId: mkt.id,
-                                                  catalogEndDate: mktCatalog?.endDate,
-                                                  productList: fullMarketModalList,
-                                                  currentIndex: fullIdx >= 0 ? fullIdx : 0
-                                                });
-                                              }
-                                            }} 
-                                            onEdit={() => { setActiveMarketId(mkt.id); setProductToEdit({ product, index: idx, catalogId: selectedCatId || undefined }); }} 
-                                            isFavorite={isFavorite(product.productName || '', mkt.id)} 
-                                            onToggleFavorite={() => toggleFavorite(product, mkt.id)} 
-                                          />
-                                        ))}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    /* Grouped by Categories View (Sticky category headers, clickable to toggle categories list) */
-                                    <div className="space-y-6 sm:space-y-8">
+                                    /* Grouped by Categories View (Sticky category headers across entire section, clicking scrolls to chosen category) */
+                                    <div className="space-y-6 sm:space-y-8 relative">
+                                      {activeCategoryDropdown && (
+                                        <div
+                                          className="fixed inset-0 z-10"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveCategoryDropdown(null);
+                                          }}
+                                        />
+                                      )}
                                       {groupedProductsByCategory.map((group) => {
                                         const isThisDropdownOpen = activeCategoryDropdown === group.category;
                                         return (
-                                          <div key={group.category} className="space-y-2.5 sm:space-y-3">
-                                            {/* Category Header (Sticky right below market header, clickable to toggle categories list) */}
-                                            <div className="relative">
-                                              <div 
-                                                style={{ top: `${stickyHeaderHeight}px` }}
-                                                onClick={() => setActiveCategoryDropdown(prev => prev === group.category ? null : group.category)}
-                                                role="button"
-                                                tabIndex={0}
-                                                title="Bütün kateqoriyaları gör və seç"
-                                                className="sticky z-20 bg-white/95 backdrop-blur-md -mx-2 sm:-mx-4 px-2 sm:px-4 py-2 sm:py-2.5 border-b border-gray-100 flex items-center justify-center relative shadow-2xs transition-[top] duration-150 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none group"
-                                              >
-                                                <div className="flex items-center justify-center gap-2 min-w-0 max-w-[85%] text-center">
-                                                  <div className={`w-2.5 sm:w-3 h-7 sm:h-8 rounded-full bg-${mktAccent}-600 shrink-0 group-hover:scale-y-110 transition-transform`}></div>
-                                                  <h3 className="font-black text-lg sm:text-2xl text-gray-900 tracking-tight truncate flex items-center gap-2">
-                                                    <span>{group.category}</span>
-                                                    <ChevronDown className={`w-5 h-5 sm:w-6 sm:h-6 text-gray-400 group-hover:text-gray-700 transition-transform duration-200 ${isThisDropdownOpen ? 'rotate-180 text-gray-800' : ''}`} />
-                                                  </h3>
-                                                </div>
+                                          <div
+                                            key={group.category}
+                                            id={`category-section-${mkt.id}-${encodeURIComponent(group.category)}`}
+                                            className="space-y-2.5 sm:space-y-3"
+                                          >
+                                            {/* Category Header (Direct child so position:sticky holds throughout the entire category) */}
+                                            <div 
+                                              style={{ top: `${stickyHeaderHeight}px` }}
+                                              onClick={() => setActiveCategoryDropdown(prev => prev === group.category ? null : group.category)}
+                                              role="button"
+                                              tabIndex={0}
+                                              title="Bütün kateqoriyaları gör və seç"
+                                              className={`sticky ${isThisDropdownOpen ? 'z-30' : 'z-20'} bg-white/95 backdrop-blur-md -mx-2 sm:-mx-4 px-2 sm:px-4 py-2 sm:py-2.5 border-b border-gray-100 flex items-center justify-center shadow-2xs transition-[top] duration-150 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none group`}
+                                            >
+                                              <div className="flex items-center justify-center gap-2 min-w-0 max-w-[85%] text-center">
+                                                <div className={`w-2.5 sm:w-3 h-7 sm:h-8 rounded-full bg-${mktAccent}-600 shrink-0 group-hover:scale-y-110 transition-transform`}></div>
+                                                <h3 className="font-black text-lg sm:text-2xl text-gray-900 tracking-tight truncate flex items-center gap-2">
+                                                  <span>{group.category}</span>
+                                                  <ChevronDown className={`w-5 h-5 sm:w-6 sm:h-6 text-gray-400 group-hover:text-gray-700 transition-transform duration-200 ${isThisDropdownOpen ? 'rotate-180 text-gray-800' : ''}`} />
+                                                </h3>
                                               </div>
 
-                                              {/* Simple vertical list of category names right underneath the clicked text */}
+                                              {/* Simple vertical list of category names right underneath the sticky header */}
                                               {isThisDropdownOpen && (
-                                                <div className="relative z-30">
-                                                  {/* Click outside to close (transparent, non-blocking backdrop) */}
-                                                  <div 
-                                                    className="fixed inset-0 z-20" 
+                                                <div
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  className="absolute left-2 sm:left-4 top-full mt-1 w-full max-w-xs sm:max-w-sm bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-40 max-h-72 overflow-y-auto animate-[fadeIn_0.15s_ease-out] text-left"
+                                                >
+                                                  <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                                                    <span>Kateqoriyalar</span>
+                                                    <button 
+                                                      type="button"
+                                                      onClick={(e) => { e.stopPropagation(); setActiveCategoryDropdown(null); }}
+                                                      className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                                                    >
+                                                      <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  </div>
+                                                  
+                                                  {/* Scroll to Top Option */}
+                                                  <button
+                                                    type="button"
                                                     onClick={(e) => {
                                                       e.stopPropagation();
+                                                      setSelectedCategoryFilter(null);
                                                       setActiveCategoryDropdown(null);
-                                                    }} 
-                                                  />
-                                                  <div className="absolute left-0 top-1 w-full max-w-xs sm:max-w-sm bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-30 max-h-72 overflow-y-auto animate-[fadeIn_0.15s_ease-out]">
-                                                    <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                                                      <span>Kateqoriyalar</span>
-                                                      <button 
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); setActiveCategoryDropdown(null); }}
-                                                        className="text-gray-400 hover:text-gray-600 p-0.5"
-                                                      >
-                                                        <X className="w-3.5 h-3.5" />
-                                                      </button>
-                                                    </div>
-                                                    
-                                                    {/* Hamısı Option */}
-                                                    <button
-                                                      type="button"
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setSelectedCategoryFilter(null);
-                                                        setActiveCategoryDropdown(null);
-                                                        setVisibleDetailCount(24);
-                                                      }}
-                                                      className="w-full text-left px-3.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center justify-between transition-colors cursor-pointer border-b border-gray-50"
-                                                    >
-                                                      <span className="font-bold text-blue-600">Hamısı (Bütün məhsullar)</span>
-                                                      <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-                                                        {mktFilteredProducts.length}
-                                                      </span>
-                                                    </button>
+                                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                    }}
+                                                    className="w-full text-left px-3.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center justify-between transition-colors cursor-pointer border-b border-gray-50"
+                                                  >
+                                                    <span className="font-bold text-blue-600">Bütün kateqoriyalar (Ən başa)</span>
+                                                    <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
+                                                      {mktFilteredProducts.length}
+                                                    </span>
+                                                  </button>
 
-                                                    {/* Individual categories alt alta */}
-                                                    {allCategoriesWithCounts.map(cat => {
-                                                      const isCurrent = group.category === cat.name;
-                                                      return (
-                                                        <button
-                                                          key={cat.name}
-                                                          type="button"
-                                                          onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedCategoryFilter(cat.name);
-                                                            setActiveCategoryDropdown(null);
-                                                            setVisibleDetailCount(24);
-                                                          }}
-                                                          className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
-                                                            isCurrent 
-                                                              ? 'bg-gray-100 font-bold text-gray-900' 
-                                                              : 'text-gray-700 hover:bg-gray-50'
-                                                          }`}
-                                                        >
-                                                          <span className="truncate">{cat.name}</span>
-                                                          <span className="text-[10px] text-gray-500 bg-gray-100 font-semibold px-2 py-0.5 rounded-full ml-2 shrink-0">
-                                                            {cat.count}
-                                                          </span>
-                                                        </button>
-                                                      );
-                                                    })}
-                                                  </div>
+                                                  {/* Individual categories alt alta — scrolls to selected category while keeping all categories visible */}
+                                                  {allCategoriesWithCounts.map(cat => {
+                                                    const isCurrent = group.category === cat.name;
+                                                    return (
+                                                      <button
+                                                        key={cat.name}
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          setActiveCategoryDropdown(null);
+                                                          scrollToCategorySection(cat.name);
+                                                        }}
+                                                        className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                                                          isCurrent 
+                                                            ? 'bg-gray-100 font-bold text-gray-900' 
+                                                            : 'text-gray-700 hover:bg-gray-50'
+                                                        }`}
+                                                      >
+                                                        <span className="truncate">{cat.name}</span>
+                                                        <span className="text-[10px] text-gray-500 bg-gray-100 font-semibold px-2 py-0.5 rounded-full ml-2 shrink-0">
+                                                          {cat.count}
+                                                        </span>
+                                                      </button>
+                                                    );
+                                                  })}
                                                 </div>
                                               )}
                                             </div>
+
                                             <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
                                               {group.products.map(({ product, originalIndex }) => (
                                                 <ProductCard 
@@ -2718,7 +2666,6 @@ const App: React.FC = () => {
                                         );
                                       })}
                                     </div>
-                                  )
                                 ) : (
                                   <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
                                     {displayedProducts.map((product, index) => (
@@ -2813,6 +2760,22 @@ const App: React.FC = () => {
              if (active) { handleShowCheaperOnlyChange(false); setActiveMarketId(null); }
           }}
           favoritesCount={favorites.length}
+          markets={sortedMarkets
+            .map(m => {
+              const mC = m.catalogs || [];
+              const mCatId = activeCatalogByMarket[m.id] || mC[0]?.id;
+              const mCat = mC.find(c => c.id === mCatId) || mC[0];
+              const mProds = mCat ? (mCat.products || []) : (m.products || []);
+              return {
+                id: m.id,
+                name: m.name,
+                logoUrl: m.logoUrl,
+                logoPlaceholder: m.logoPlaceholder,
+                productCount: mProds.length
+              };
+            })
+            .filter(m => m.productCount > 0)}
+          onOpenMarketSwipeFeed={handleOpenMarketSwipeFeed}
         />
       )}
 
@@ -2842,7 +2805,7 @@ const App: React.FC = () => {
               onClose={() => setViewProduct(null)} 
               product={viewProduct?.product || null} 
               marketName={viewProduct?.marketName || ''} 
-              allMarkets={markets} 
+              allMarkets={sortedMarkets} 
               onCompareClick={handleCompareClick} 
               canGoBack={!!previousViewState} 
               onBack={handleRestorePreviousView} 
@@ -2852,6 +2815,7 @@ const App: React.FC = () => {
               totalCount={viewProduct?.productList?.length}
               productList={viewProduct?.productList}
               onSelectIndex={handleSelectIndexInModal}
+              onSelectMarketInModal={handleOpenMarketSwipeFeed}
               isFavorite={Boolean(viewProduct && modalMarketId && isFavorite(viewProduct.product.productName || '', modalMarketId))}
               onToggleFavorite={viewProduct && modalMarketId ? () => toggleFavorite(viewProduct.product, modalMarketId) : undefined}
               onEnsureFavorite={viewProduct && modalMarketId ? () => ensureFavorite(viewProduct.product, modalMarketId) : undefined}
