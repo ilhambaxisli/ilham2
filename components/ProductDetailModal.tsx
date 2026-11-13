@@ -76,6 +76,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const clampedPropIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), currentIndex));
 
   const [activeIdx, setActiveIdx] = useState<number>(clampedPropIdx);
+  const [jumpTargetIdx, setJumpTargetIdx] = useState<number | null>(null);
   const [burstSlideIdx, setBurstSlideIdx] = useState<number | null>(null);
   const [heartBurstPhase, setHeartBurstPhase] = useState<'hidden' | 'pop' | 'fade'>('hidden');
   const [isMarketDropdownOpen, setIsMarketDropdownOpen] = useState<boolean>(false);
@@ -91,6 +92,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTouchTimeRef = useRef<number>(0);
   const burstTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const smoothScrollRafRef = useRef<number | null>(null);
+  const pendingDirectJumpRef = useRef<number | null>(null);
 
   // Strong iOS/Android background body scroll lock inside useLayoutEffect so viewport size is locked before measuring scroller height
   useLayoutEffect(() => {
@@ -212,13 +215,63 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   useEffect(() => {
     return () => {
       burstTimersRef.current.forEach(clearTimeout);
+      if (smoothScrollRafRef.current !== null) {
+        cancelAnimationFrame(smoothScrollRafRef.current);
+      }
     };
+  }, []);
+
+  const cancelSmoothScroll = useCallback(() => {
+    if (smoothScrollRafRef.current !== null) {
+      cancelAnimationFrame(smoothScrollRafRef.current);
+      smoothScrollRafRef.current = null;
+      setJumpTargetIdx(null);
+      const el = scrollerRef.current;
+      if (el) {
+        el.style.scrollSnapType = '';
+      }
+    }
   }, []);
 
   const markUserInteraction = useCallback(() => {
     userInteractedRef.current = true;
     isProgrammaticScrollRef.current = false;
-  }, []);
+    pendingDirectJumpRef.current = null;
+    cancelSmoothScroll();
+  }, [cancelSmoothScroll]);
+
+  const jumpDirectToIndex = useCallback((targetIdx: number) => {
+    cancelSmoothScroll();
+    const clamped = Math.max(0, Math.min(items.length - 1, targetIdx));
+    userInteractedRef.current = true;
+    isProgrammaticScrollRef.current = true;
+    pendingDirectJumpRef.current = clamped;
+    setJumpTargetIdx(null);
+    setIsMarketDropdownOpen(false);
+    activeIdxRef.current = clamped;
+    setActiveIdx(clamped);
+    snapToSlideInstant(clamped);
+  }, [items.length, cancelSmoothScroll, snapToSlideInstant]);
+
+  useLayoutEffect(() => {
+    const target = pendingDirectJumpRef.current;
+    if (target === null) return;
+
+    snapToSlideInstant(target);
+    let cancelled = false;
+    const rafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      snapToSlideInstant(target);
+      pendingDirectJumpRef.current = null;
+      isProgrammaticScrollRef.current = false;
+      onSelectIndex?.(target);
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
+  }, [activeIdx, snapToSlideInstant, onSelectIndex]);
 
   const scrollToIndex = useCallback((targetIdx: number) => {
     const el = scrollerRef.current;
@@ -229,15 +282,57 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     const targetTop = targetSlide && (clamped === 0 || targetSlide.offsetTop > 0)
       ? targetSlide.offsetTop
       : clamped * el.clientHeight;
-    el.scrollTo({
-      top: targetTop,
-      behavior: 'smooth'
-    });
-  }, [items.length, markUserInteraction]);
+
+    const startTop = el.scrollTop;
+    const distance = targetTop - startTop;
+    if (Math.abs(distance) < 2) {
+      el.scrollTop = targetTop;
+      return;
+    }
+
+    // Pre-render target slide immediately so even long jumps (10+ products ahead) glide with zero blank flash
+    setJumpTargetIdx(clamped);
+    el.style.scrollSnapType = 'none';
+    const duration = Math.min(340, Math.max(150, 140 + Math.abs(clamped - activeIdxRef.current) * 20));
+    const startTime = performance.now();
+
+    const step = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      el.scrollTop = startTop + distance * eased;
+
+      if (el.clientHeight > 0) {
+        const currentStepIdx = Math.max(0, Math.min(items.length - 1, Math.round(el.scrollTop / el.clientHeight)));
+        if (currentStepIdx !== activeIdxRef.current) {
+          activeIdxRef.current = currentStepIdx;
+          setActiveIdx(currentStepIdx);
+        }
+      }
+
+      if (progress < 1) {
+        smoothScrollRafRef.current = requestAnimationFrame(step);
+      } else {
+        smoothScrollRafRef.current = null;
+        el.scrollTop = targetTop;
+        el.style.scrollSnapType = '';
+        setJumpTargetIdx(null);
+        if (activeIdxRef.current !== clamped) {
+          activeIdxRef.current = clamped;
+          setActiveIdx(clamped);
+        }
+        setIsMarketDropdownOpen(false);
+        onSelectIndex?.(clamped);
+      }
+    };
+
+    smoothScrollRafRef.current = requestAnimationFrame(step);
+  }, [items.length, markUserInteraction, onSelectIndex]);
 
   const handleScroll = () => {
     const el = scrollerRef.current;
     if (!el || el.clientHeight === 0 || items.length === 0) return;
+    if (smoothScrollRafRef.current !== null || pendingDirectJumpRef.current !== null) return;
     if (isProgrammaticScrollRef.current && !userInteractedRef.current) {
       return;
     }
@@ -277,27 +372,6 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     const str = String(val).replace(',', '.').replace(/[^0-9.]/g, '');
     return parseFloat(str);
   };
-
-  // Build product lowest price map once per allMarkets change for fast Best Price checks across all slides
-  const minPriceByProductName = useMemo(() => {
-    const map = new Map<string, number>();
-    const normalize = (s: string) => (s || '').trim().toLowerCase();
-    for (const market of allMarkets) {
-      const marketProducts = market.catalogs && market.catalogs.length > 0
-        ? market.catalogs.flatMap(c => c.products)
-        : market.products || [];
-      for (const p of marketProducts) {
-        const key = normalize(p.productName);
-        const price = parsePriceNumber(p.newPrice);
-        if (!key || isNaN(price)) continue;
-        const prev = map.get(key);
-        if (prev === undefined || price < prev) {
-          map.set(key, price);
-        }
-      }
-    }
-    return map;
-  }, [allMarkets]);
 
   const activeItem = items[activeIdx] || items[0] || null;
 
@@ -458,8 +532,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
         className="relative z-10 w-full h-full overflow-y-auto snap-y snap-mandatory overscroll-y-none scrollbar-hide touch-pan-y [overflow-anchor:none]"
       >
         {items.map((item, idx) => {
-          // Virtualize far-away slides so even 300+ products open and scroll effortlessly at 60/120fps
-          const isNearby = Math.abs(idx - activeIdx) <= 2;
+          // Virtualize far-away slides (+/-4 plus active jump target keeps clicked horizontal targets pre-rendered)
+          const isNearby = Math.abs(idx - activeIdx) <= 4 || (jumpTargetIdx !== null && Math.abs(idx - jumpTargetIdx) <= 1);
 
           if (!isNearby) {
             return (
@@ -467,7 +541,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                 key={`slide-${idx}`}
                 className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
               >
-                <div className="w-full max-w-sm min-h-[470px] sm:min-h-[510px] rounded-2xl bg-white/95 shadow-2xl" />
+                <div className="w-full max-w-sm min-h-[510px] sm:min-h-[550px] rounded-2xl bg-white/95 shadow-2xl" />
               </div>
             );
           }
@@ -482,11 +556,6 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
           const imgUrl = p.customImageUrl 
             ? p.customImageUrl 
             : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(p.productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
-
-          const normName = (p.productName || '').trim().toLowerCase();
-          const curPriceNum = parsePriceNumber(p.newPrice);
-          const minMarketPrice = minPriceByProductName.get(normName);
-          const slideIsBestPrice = !isNaN(curPriceNum) && (minMarketPrice === undefined || curPriceNum <= minMarketPrice);
 
           const slideIsFavorite = checkIsFavorite
             ? checkIsFavorite(item)
@@ -514,7 +583,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                 onTouchEnd={(e) => {
                   lastTouchTimeRef.current = Date.now();
                   const target = e.target as HTMLElement;
-                  if (target.closest('button') || target.closest('a')) return;
+                  if (target.closest('button') || target.closest('a') || target.closest('[data-upcoming-strip]')) return;
                   if (!tapStartRef.current) return;
                   const touch = e.changedTouches[0];
                   const dx = Math.abs(touch.clientX - tapStartRef.current.x);
@@ -535,10 +604,10 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                 onDoubleClick={(e) => {
                   if (Date.now() - lastTouchTimeRef.current < 600) return;
                   const target = e.target as HTMLElement;
-                  if (target.closest('button') || target.closest('a')) return;
+                  if (target.closest('button') || target.closest('a') || target.closest('[data-upcoming-strip]')) return;
                   triggerHeartBurst(item, idx);
                 }}
-                className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden min-h-[470px] sm:min-h-[510px] max-h-[90dvh] z-10 border border-gray-100"
+                className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden min-h-[510px] sm:min-h-[550px] max-h-[90dvh] z-10 border border-gray-100"
               >
                 {/* Subtle Top Drag Pill */}
                 <div className="w-full flex items-center justify-center pt-2 pb-0.5 bg-white shrink-0">
@@ -701,12 +770,12 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                 </div>
 
                 {/* Product Image */}
-                <div className="relative w-full h-52 sm:h-60 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
+                <div className="relative w-full h-40 sm:h-44 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
                   <img 
                     src={imgUrl} 
                     alt={cleanName} 
                     draggable={false}
-                    className="w-40 h-40 sm:w-44 sm:h-44 object-contain mix-blend-multiply pointer-events-none select-none"
+                    className="w-32 h-32 sm:w-36 sm:h-36 object-contain mix-blend-multiply pointer-events-none select-none"
                   />
 
                   {/* Double-tap Center Heart Burst Animation */}
@@ -721,32 +790,6 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                         strokeWidth={1.5}
                       />
                     </div>
-                  )}
-
-                  {/* Top-Right Heart / Favorite Toggle Button */}
-                  {(onToggleFavoriteItem || onToggleFavorite) && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onToggleFavoriteItem) {
-                          onToggleFavoriteItem(item);
-                        } else if (onToggleFavorite) {
-                          onToggleFavorite();
-                        }
-                      }}
-                      className={`absolute top-2.5 right-2.5 z-20 w-9 h-9 rounded-full shadow-md flex items-center justify-center transition-all active:scale-90 cursor-pointer border ${
-                        slideIsFavorite 
-                          ? 'bg-red-50 border-red-200 text-red-500' 
-                          : 'bg-white/95 border-gray-100 text-gray-400 hover:text-red-500'
-                      }`}
-                      title={slideIsFavorite ? "Seçilənlərdən çıxar" : "Seçilənlərə əlavə et"}
-                    >
-                      <Heart 
-                        className={`w-5 h-5 transition-transform duration-200 ${slideIsFavorite ? 'fill-red-500 text-red-500 scale-110' : ''}`} 
-                        strokeWidth={2.2} 
-                      />
-                    </button>
                   )}
 
                   {/* Mobile TikTok quick up/down buttons */}
@@ -789,60 +832,129 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                 </div>
 
                 {/* Product Info Content */}
-                <div className={`p-4 sm:p-5 flex-1 flex flex-col justify-between ${isCurrentSlide && showComparisons && comparisonData.length > 0 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}>
+                <div className={`px-3.5 py-2.5 sm:px-4 sm:py-3 flex-1 flex flex-col justify-between ${isCurrentSlide && showComparisons && comparisonData.length > 0 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}>
                   <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className="inline-block px-2.5 py-0.5 text-[11px] font-bold text-gray-600 bg-gray-100 rounded-lg">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="inline-block px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-gray-600 bg-gray-100 rounded-lg truncate">
                         {p.category}
                       </span>
-                      {slideIsBestPrice && (
-                        <span className="inline-block px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded-lg">
-                          Ən Sərfəli Qiymət
-                        </span>
+
+                      {countdownInfo || formattedEndDate ? (
+                        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold border shadow-2xs shrink-0 ${countdownInfo?.badgeStyle || 'text-amber-800 bg-amber-50 border-amber-200/80'}`}>
+                          <Clock className={`w-3 h-3 shrink-0 ${countdownInfo?.iconColor || 'text-amber-600'}`} />
+                          <span>Bitmə: {countdownInfo ? countdownInfo.label : formattedEndDate}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-gray-600 bg-gray-50 px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-semibold border border-gray-200 shrink-0">
+                          <Clock className="w-3 h-3 text-gray-400 shrink-0" />
+                          <span>Müddətsiz</span>
+                        </div>
                       )}
                     </div>
-                    
-                    <h2 className="text-lg sm:text-xl font-bold text-gray-900 leading-snug mb-2">
-                      {cleanName}
-                    </h2>
-                  </div>
 
-                  <div>
-                    <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-1.5 mb-1.5">
-                      <div className="flex flex-col items-start gap-1">
-                        <span className="text-2xl sm:text-3xl font-black text-green-600 tracking-tight leading-none">
+                    <div className="flex items-start justify-between gap-3 py-1">
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-snug line-clamp-2 flex-1 min-w-0">
+                        {cleanName}
+                      </h2>
+
+                      <div className="flex flex-col items-end shrink-0 text-right">
+                        <span className="text-3xl font-black text-green-600 tracking-tight leading-none whitespace-nowrap">
                           {p.newPrice} <span className="text-xl">₼</span>
                         </span>
                         {p.oldPrice && p.oldPrice !== '---' && (
-                          <span className="text-gray-400 text-sm sm:text-base line-through font-medium leading-none">
+                          <span className="text-gray-400 text-xs sm:text-sm line-through font-medium leading-none mt-1 whitespace-nowrap">
                             {p.oldPrice} ₼
                           </span>
                         )}
+                        {(onToggleFavoriteItem || onToggleFavorite) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onToggleFavoriteItem) {
+                                onToggleFavoriteItem(item);
+                              } else if (onToggleFavorite) {
+                                onToggleFavorite();
+                              }
+                            }}
+                            className={`mt-2 w-9 h-9 rounded-full shadow-sm flex items-center justify-center transition-all active:scale-90 cursor-pointer border ${
+                              slideIsFavorite 
+                                ? 'bg-red-50 border-red-200 text-red-500' 
+                                : 'bg-gray-50 hover:bg-red-50/70 border-gray-200 text-gray-400 hover:text-red-500'
+                            }`}
+                            title={slideIsFavorite ? "Seçilənlərdən çıxar" : "Seçilənlərə əlavə et"}
+                          >
+                            <Heart 
+                              className={`w-5 h-5 transition-transform duration-200 ${slideIsFavorite ? 'fill-red-500 text-red-500 scale-110' : ''}`} 
+                              strokeWidth={2.2} 
+                            />
+                          </button>
+                        )}
                       </div>
-                      
-                      {formattedEndDate ? (
-                        <div className="flex flex-col items-end">
-                          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border shadow-2xs ${countdownInfo?.badgeStyle || 'text-amber-800 bg-amber-50 border-amber-200/80'}`}>
-                            <Clock className={`w-3.5 h-3.5 shrink-0 ${countdownInfo?.iconColor || 'text-amber-600'}`} />
-                            <span>Bitmə: {formattedEndDate}{countdownInfo ? ` (${countdownInfo.label})` : ''}</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-end">
-                          <div className="flex items-center gap-1.5 text-gray-600 bg-gray-50 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-200">
-                            <Clock className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                            <span>Müddətsiz</span>
-                          </div>
-                        </div>
-                      )}
                     </div>
+                  </div>
+
+                  <div>
 
                     {/* TikTok Swipe & Double-Tap Hint */}
-                    <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex items-center justify-center gap-2 text-gray-400 text-[11px] font-medium">
-                      <ChevronUp className="w-3.5 h-3.5 animate-bounce" />
+                    <div className="mt-1.5 pt-1.5 border-t border-gray-100 flex items-center justify-center gap-1.5 text-gray-400 text-[10px] font-medium">
+                      <ChevronUp className="w-3 h-3 animate-bounce" />
                       <span>Yuxarı sürüşdürün · Bəyənmək üçün 2 dəfə toxunun</span>
-                      <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+                      <ChevronDown className="w-3 h-3 animate-bounce" />
                     </div>
+
+                    {/* Horizontally Scrollable Next Products Strip (4 visible cards, swipe right for more) */}
+                    {items.length > idx + 1 && (
+                      <div
+                        data-upcoming-strip="true"
+                        className="mt-2 pt-2 border-t border-gray-100 touch-pan-x touch-pan-y"
+                        onDoubleClick={(e) => e.stopPropagation()}
+                        onWheel={(e) => {
+                          if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+                            e.stopPropagation();
+                          }
+                        }}
+                      >
+                        <div className="flex items-stretch gap-1.5 overflow-x-auto overscroll-y-auto scrollbar-hide snap-x snap-proximity touch-pan-x touch-pan-y pb-0.5">
+                          {(isCurrentSlide ? items.slice(idx + 1) : items.slice(idx + 1, idx + 5)).map((upItem, upOffset) => {
+                            const upTargetIdx = idx + 1 + upOffset;
+                            const upProd = upItem.product;
+                            const { cleanName: upCleanName } = extractQuantityAndCleanName(upProd.productName);
+                            const upImgUrl = upProd.customImageUrl
+                              ? upProd.customImageUrl
+                              : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(upProd.productName + ' product')}&w=150&h=150&c=7&rs=1&p=0`;
+                            return (
+                              <button
+                                key={`up-${upTargetIdx}`}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  jumpDirectToIndex(upTargetIdx);
+                                }}
+                                className="group w-[78px] sm:w-[82px] shrink-0 snap-start flex flex-col items-center p-1 rounded-xl bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-400 shadow-2xs transition-all cursor-pointer active:scale-95 text-center"
+                                title={upCleanName}
+                              >
+                                <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                                  <img
+                                    src={upImgUrl}
+                                    alt={upCleanName}
+                                    loading="lazy"
+                                    draggable={false}
+                                    className="w-8 h-8 object-contain mix-blend-multiply pointer-events-none select-none"
+                                  />
+                                </div>
+                                <span className="w-full text-[9px] font-semibold text-gray-800 group-hover:text-emerald-800 truncate leading-tight mt-0.5">
+                                  {upCleanName}
+                                </span>
+                                <span className="text-[10px] font-black text-green-600 leading-none mt-0.5">
+                                  {upProd.newPrice} ₼
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* COMPARISON LIST */}
                     {isCurrentSlide && showComparisons && comparisonData.length > 0 && (

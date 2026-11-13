@@ -936,6 +936,9 @@ const App: React.FC = () => {
       setActiveCategoryDropdown(null);
       setIsMarketSwitcherOpen(false);
       setShowFavorites(false);
+      setSearchQuery('');
+      setDebouncedSearchQuery('');
+      setIsSearching(false);
       setIsProcessingCheaper(true);
       setDeferredCheaperOnly(false);
       setVisibleProductCount(6); 
@@ -944,6 +947,24 @@ const App: React.FC = () => {
       setDeferredCheaperOnly(false);
       setIsProcessingCheaper(false);
       setVisibleProductCount(20);
+    }
+  };
+
+  const handleSearchQueryChange = (q: string) => {
+    const wasEmpty = searchQuery.trim().length === 0;
+    const isNowNonEmpty = q.trim().length > 0;
+    setSearchQuery(q);
+    setIsSearching(true);
+    if (isNowNonEmpty) {
+      setActiveMarketId(null);
+      setSelectedCategoryFilter(null);
+      setActiveCategoryDropdown(null);
+      setIsMarketSwitcherOpen(false);
+      if (showFavorites) setShowFavorites(false);
+      if (showCheaperOnly) handleShowCheaperOnlyChange(false);
+      if (wasEmpty) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     }
   };
   
@@ -1314,8 +1335,9 @@ const App: React.FC = () => {
 
   const filteredMarketData = useMemo(() => {
     if (showFavorites || deferredCheaperOnly) return [];
+    const isGlobalSearch = debouncedSearchQuery.trim().length > 0;
     return sortedMarkets
-      .filter(m => { if (activeMarketId) return m.id === activeMarketId; return true; })
+      .filter(m => { if (!isGlobalSearch && activeMarketId) return m.id === activeMarketId; return true; })
       .map(market => {
         const allProducts = market.catalogs ? market.catalogs.flatMap(c => c.products) : (market.products || []);
         const results = allProducts.filter(product => {
@@ -1334,7 +1356,7 @@ const App: React.FC = () => {
         const productsWithMeta = results.map(p => ({ ...p, _hasCheaper: checkForCheaperAlternative(p, market.id) }));
         return { ...market, filteredProducts: productsWithMeta };
       })
-      .filter(m => m.filteredProducts.length > 0 || (activeMarketId && m.id === activeMarketId)); 
+      .filter(m => m.filteredProducts.length > 0 || (!isGlobalSearch && activeMarketId && m.id === activeMarketId)); 
   }, [sortedMarkets, debouncedSearchQuery, debouncedMaxPrice, deferredCheaperOnly, activeMarketId, showFavorites, productPriceIndex]);
 
   const filterProductForDetail = (product: DiscountProduct) => {
@@ -2748,16 +2770,21 @@ const App: React.FC = () => {
       {!isLoading && (
         <BottomSearchDock 
           searchQuery={searchQuery}
-          onSearchChange={(q) => { setSearchQuery(q); setIsSearching(true); }}
+          onSearchChange={handleSearchQueryChange}
           maxPrice={maxPrice}
           onMaxPriceChange={(p) => { setMaxPrice(p); setIsSearching(true); }}
           showCheaperOnly={showCheaperOnly}
           onShowCheaperOnlyChange={handleShowCheaperOnlyChange}
           showFavorites={showFavorites}
           onShowFavoritesChange={(active) => {
-             setIsSearching(true);
              setShowFavorites(active);
-             if (active) { handleShowCheaperOnlyChange(false); setActiveMarketId(null); }
+             if (active) {
+               handleShowCheaperOnlyChange(false);
+               setActiveMarketId(null);
+               setSearchQuery('');
+               setDebouncedSearchQuery('');
+               setIsSearching(false);
+             }
           }}
           favoritesCount={favorites.length}
           markets={sortedMarkets
