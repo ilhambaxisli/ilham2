@@ -214,9 +214,9 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
   const hasNext = activeIdx < totalCount - 1;
 
   return (
-    <div className="fixed inset-0 z-[100] select-none overflow-hidden bg-white sm:bg-black/80">
-      {/* Dark Backdrop on larger screens */}
-      <div className="hidden sm:block absolute inset-0 backdrop-blur-sm pointer-events-none" />
+    <div className="fixed inset-0 z-[100] select-none overflow-hidden">
+      {/* Dark Blurred Backdrop */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-none" />
 
       {/* Desktop/Tablet Floating Up/Down Navigation */}
       <div className="hidden sm:flex fixed right-4 md:right-8 top-1/2 -translate-y-1/2 z-[115] flex-col items-center gap-3">
@@ -267,9 +267,9 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
             return (
               <div
                 key={`opp-slide-${idx}`}
-                className="w-full h-full shrink-0 snap-start snap-always flex items-stretch sm:items-center justify-center p-0"
+                className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
               >
-                <div className="w-full sm:max-w-lg h-full bg-white" />
+                <div className="w-full max-w-sm min-h-[490px] sm:min-h-[530px] rounded-2xl bg-white/95 shadow-2xl" />
               </div>
             );
           }
@@ -299,7 +299,7 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
                   onClose();
                 }
               }}
-              className="w-full h-full shrink-0 snap-start snap-always flex items-stretch sm:items-center justify-center p-0"
+              className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
             >
               <div
                 onClick={(e) => e.stopPropagation()}
@@ -335,10 +335,15 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
                   if (target.closest('button') || target.closest('a') || !cheapest) return;
                   triggerHeartBurst(item, cheapest, idx);
                 }}
-                className="relative w-full sm:max-w-lg h-full bg-white flex flex-col overflow-hidden z-10 rounded-none border-0 sm:border-x sm:border-gray-100 sm:shadow-2xl"
+                className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden min-h-[490px] sm:min-h-[530px] max-h-[90dvh] z-10 border border-gray-100"
               >
+                {/* Subtle Top Drag Pill */}
+                <div className="w-full flex items-center justify-center pt-2 pb-0.5 bg-white shrink-0">
+                  <div className="w-10 h-1 rounded-full bg-gray-300" />
+                </div>
+
                 {/* Header Bar: Saving Summary Pill + Counter + Close */}
-                <div className="w-full px-4 py-3 sm:py-3.5 bg-white border-b border-gray-100 flex items-center justify-between gap-2 z-20 shrink-0">
+                <div className="w-full px-3.5 py-2 bg-white border-b border-gray-100 flex items-center justify-between gap-2 z-20 shrink-0">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-black text-xs shadow-2xs shrink-0">
                       <TrendingDown className="w-3.5 h-3.5 text-emerald-600" />
@@ -349,9 +354,9 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <div
-                      className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-50 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
+                      className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
                       title={`Fürsət: ${idx + 1} / ${totalCount}`}
                     >
                       <span className="text-emerald-600 font-black">{idx + 1}</span>
@@ -361,7 +366,7 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
 
                     <button
                       onClick={(e) => { e.stopPropagation(); onClose(); }}
-                      className="p-1 sm:p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
+                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
                       title="Bağla"
                     >
                       <X className="w-5 h-5" />
@@ -370,12 +375,12 @@ const OpportunityDetailModal: React.FC<OpportunityDetailModalProps> = ({
                 </div>
 
                 {/* Product Image Area */}
-                <div className="relative w-full h-48 sm:h-52 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
+                <div className="relative w-full h-44 sm:h-52 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
                   <img
                     src={imgUrl}
                     alt={cleanName}
                     draggable={false}
-                    className="w-36 h-36 sm:w-44 sm:h-44 object-contain mix-blend-multiply pointer-events-none select-none"
+                    className="w-36 h-36 sm:w-40 sm:h-40 object-contain mix-blend-multiply pointer-events-none select-none"
                   />
 
                   {/* Double-tap Center Heart Burst Animation */}

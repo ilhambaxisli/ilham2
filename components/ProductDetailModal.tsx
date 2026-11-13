@@ -332,10 +332,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const hasNext = activeIdx < items.length - 1;
 
   return (
-    <div className="fixed inset-0 z-[100] select-none overflow-hidden bg-white sm:bg-black/80">
-      {/* Dark Backdrop on larger screens */}
+    <div className="fixed inset-0 z-[100] select-none overflow-hidden">
+      {/* Dark Blurred Backdrop */}
       <div 
-        className="hidden sm:block absolute inset-0 backdrop-blur-sm pointer-events-none"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-none"
       />
 
       {/* TikTok-style Vertical Navigation Floating Dock (Desktop & Tablet) */}
@@ -390,9 +390,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             return (
               <div
                 key={`slide-${idx}`}
-                className="w-full h-full shrink-0 snap-start snap-always flex items-stretch sm:items-center justify-center p-0"
+                className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
               >
-                <div className="w-full sm:max-w-lg h-full bg-white" />
+                <div className="w-full max-w-sm min-h-[470px] sm:min-h-[510px] rounded-2xl bg-white/95 shadow-2xl" />
               </div>
             );
           }
@@ -427,7 +427,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   onClose();
                 }
               }}
-              className="w-full h-full shrink-0 snap-start snap-always flex items-stretch sm:items-center justify-center p-0"
+              className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
             >
               <div
                 onClick={(e) => e.stopPropagation()}
@@ -463,18 +463,23 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   if (target.closest('button') || target.closest('a')) return;
                   triggerHeartBurst(item, idx);
                 }}
-                className="relative w-full sm:max-w-lg h-full bg-white flex flex-col overflow-hidden z-10 rounded-none border-0 sm:border-x sm:border-gray-100 sm:shadow-2xl"
+                className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden min-h-[470px] sm:min-h-[510px] max-h-[90dvh] z-10 border border-gray-100"
               >
-                {/* Full-Screen Top Header Bar: Large Clickable Market Logo & Name on Left, Product Count & Close on Right */}
-                <div className="relative w-full px-4 py-3 sm:py-3.5 bg-white border-b border-gray-100 flex items-center justify-between gap-2.5 z-30 shrink-0">
-                  <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+                {/* Subtle Top Drag Pill */}
+                <div className="w-full flex items-center justify-center pt-2 pb-0.5 bg-white shrink-0">
+                  <div className="w-10 h-1 rounded-full bg-gray-300" />
+                </div>
+
+                {/* Window Top Header Bar: Large Clickable Market Logo & Name on Left, Product Count & Close on Right */}
+                <div className="relative w-full px-3.5 py-2 bg-white border-b border-gray-100 flex items-center justify-between gap-2 z-30 shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                     {canGoBack && onBack && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); onBack(); }}
-                        className="p-1.5 -ml-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors shrink-0 cursor-pointer"
+                        className="p-1 -ml-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors shrink-0 cursor-pointer"
                         title="Geri"
                       >
-                        <ArrowLeft className="w-5 h-5" />
+                        <ArrowLeft className="w-4 h-4" />
                       </button>
                     )}
 
@@ -485,41 +490,41 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                           e.stopPropagation();
                           setIsMarketDropdownOpen(prev => !prev);
                         }}
-                        className="flex items-center gap-2.5 sm:gap-3 min-w-0 text-left rounded-xl px-1.5 py-1 -my-1 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
+                        className="flex items-center gap-2 min-w-0 text-left rounded-xl px-1.5 py-1 -my-1 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
                         title="Başqa market seç"
                       >
                         {mkt?.logoUrl ? (
                           <img 
                             src={mkt.logoUrl} 
                             alt={mName} 
-                            className="w-10 h-10 sm:w-12 sm:h-12 object-contain rounded-xl bg-white p-1 border border-gray-200/90 shadow-xs shrink-0" 
+                            className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl bg-white p-0.5 border border-gray-200/90 shadow-2xs shrink-0" 
                           />
                         ) : (
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 text-emerald-800 font-black text-base sm:text-lg flex items-center justify-center border border-gray-200/90 shadow-xs shrink-0">
+                          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center border border-gray-200/90 shadow-2xs shrink-0">
                             {mkt?.logoPlaceholder || mName?.charAt(0) || 'M'}
                           </div>
                         )}
 
-                        <span className="font-black text-gray-900 text-lg sm:text-2xl tracking-tight truncate">
+                        <span className="font-black text-gray-900 text-base sm:text-lg tracking-tight truncate">
                           {mName}
                         </span>
-                        <ChevronDown className={`w-5 h-5 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${isMarketDropdownOpen && isCurrentSlide ? 'rotate-180 text-gray-800' : ''}`} />
+                        <ChevronDown className={`w-4 h-4 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${isMarketDropdownOpen && isCurrentSlide ? 'rotate-180 text-gray-800' : ''}`} />
                       </button>
                     ) : (
-                      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
                         {mkt?.logoUrl ? (
                           <img 
                             src={mkt.logoUrl} 
                             alt={mName} 
-                            className="w-10 h-10 sm:w-12 sm:h-12 object-contain rounded-xl bg-white p-1 border border-gray-200/90 shadow-xs shrink-0" 
+                            className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl bg-white p-0.5 border border-gray-200/90 shadow-2xs shrink-0" 
                           />
                         ) : (
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 text-emerald-800 font-black text-base sm:text-lg flex items-center justify-center border border-gray-200/90 shadow-xs shrink-0">
+                          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center border border-gray-200/90 shadow-2xs shrink-0">
                             {mkt?.logoPlaceholder || mName?.charAt(0) || 'M'}
                           </div>
                         )}
 
-                        <span className="font-black text-gray-900 text-lg sm:text-2xl tracking-tight truncate">
+                        <span className="font-black text-gray-900 text-base sm:text-lg tracking-tight truncate">
                           {mName}
                         </span>
                       </div>
@@ -538,7 +543,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       />
                       <div
                         onClick={(e) => e.stopPropagation()}
-                        className="absolute left-4 top-full mt-1 w-64 sm:w-72 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-30 max-h-80 overflow-y-auto animate-[fadeIn_0.15s_ease-out]"
+                        className="absolute left-3 top-full mt-1 w-60 sm:w-64 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-30 max-h-72 overflow-y-auto animate-[fadeIn_0.15s_ease-out]"
                       >
                         <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
                           <span>Marketlər</span>
@@ -598,10 +603,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     </>
                   )}
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {effectiveTotal > 0 && (
                       <div 
-                        className="inline-flex items-center gap-0.5 px-3 py-1 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-xs sm:text-sm shadow-2xs tracking-tight select-none"
+                        className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
                         title={`Məhsul: ${idx + 1} / ${effectiveTotal}`}
                       >
                         <span className="text-emerald-600 font-black">{idx + 1}</span>
@@ -612,21 +617,21 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
                     <button 
                       onClick={(e) => { e.stopPropagation(); onClose(); }}
-                      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
+                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
                       title="Bağla"
                     >
-                      <X className="w-6 h-6" />
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
 
                 {/* Product Image */}
-                <div className="relative w-full flex-1 min-h-[240px] max-h-[48dvh] bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
+                <div className="relative w-full h-52 sm:h-60 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
                   <img 
                     src={imgUrl} 
                     alt={cleanName} 
                     draggable={false}
-                    className="w-56 h-56 sm:w-64 sm:h-64 object-contain mix-blend-multiply pointer-events-none select-none"
+                    className="w-40 h-40 sm:w-44 sm:h-44 object-contain mix-blend-multiply pointer-events-none select-none"
                   />
 
                   {/* Double-tap Center Heart Burst Animation */}
@@ -709,26 +714,26 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
 
                 {/* Product Info Content */}
-                <div className={`p-5 sm:p-6 flex-1 flex flex-col justify-between ${isCurrentSlide && showComparisons && comparisonData.length > 0 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}>
+                <div className={`p-4 sm:p-5 flex-1 flex flex-col justify-between ${isCurrentSlide && showComparisons && comparisonData.length > 0 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}>
                   <div>
-                    <div className="flex items-start justify-between gap-2 mb-2.5">
-                      <span className="inline-block px-2.5 py-1 text-[11px] font-bold text-gray-600 bg-gray-100 rounded-lg">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="inline-block px-2.5 py-0.5 text-[11px] font-bold text-gray-600 bg-gray-100 rounded-lg">
                         {p.category}
                       </span>
                       {slideIsBestPrice && (
-                        <span className="inline-block px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded-lg">
+                        <span className="inline-block px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded-lg">
                           Ən Sərfəli Qiymət
                         </span>
                       )}
                     </div>
                     
-                    <h2 className="text-xl sm:text-2xl font-bold text-gray-900 leading-snug mb-3">
+                    <h2 className="text-lg sm:text-xl font-bold text-gray-900 leading-snug mb-2">
                       {cleanName}
                     </h2>
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between border-t border-gray-100 pt-3.5 mt-2 mb-2">
+                    <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-1.5 mb-1.5">
                       <div className="flex flex-col items-start gap-1">
                         <span className="text-2xl sm:text-3xl font-black text-green-600 tracking-tight leading-none">
                           {p.newPrice} <span className="text-xl">₼</span>
