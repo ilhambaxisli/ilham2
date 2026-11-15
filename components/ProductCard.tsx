@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DiscountProduct, ProductCategory } from '../types';
 import { 
   Apple, 
@@ -271,6 +271,15 @@ export const calculateDaysLeft = (rawEndDate: any): CountdownInfo | null => {
   return { daysLeft, label, badgeStyle, iconColor, formattedDate };
 };
 
+export const getExplicitProductImageUrl = (product?: Partial<DiscountProduct> | null): string | undefined => {
+  if (!product) return undefined;
+  const img = typeof product.imageUrl === 'string' ? product.imageUrl.trim() : '';
+  if (img) return img;
+  const customImg = typeof product.customImageUrl === 'string' ? product.customImageUrl.trim() : '';
+  if (customImg) return customImg;
+  return undefined;
+};
+
 const ProductCard: React.FC<ProductCardProps> = ({ 
   product, 
   accentColor, 
@@ -337,9 +346,19 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
   return { bg: 'bg-emerald-500', text: 'text-white', hex: '#10b981' };
 };
 
-  const imageUrl = product.customImageUrl 
-    ? product.customImageUrl 
-    : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(product.productName + ' product')}&w=200&h=200&c=7&rs=1&p=0`;
+  const explicitImageUrl = getExplicitProductImageUrl(product);
+  const autoBingUrl = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(product.productName + ' product')}&w=200&h=200&c=7&rs=1&p=0`;
+  const [useFallbackBing, setUseFallbackBing] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+    setUseFallbackBing(false);
+  }, [explicitImageUrl, product.productName]);
+
+  const imageUrl = (explicitImageUrl && !useFallbackBing) ? explicitImageUrl : autoBingUrl;
+  const rawEndDate = extractProductEndDate(product, catalogEndDate);
+  const countdownInfo = calculateDaysLeft(rawEndDate);
+  const isExpired = Boolean(countdownInfo && countdownInfo.daysLeft < 0);
 
   const formattedMarketName = marketName 
     ? marketName.replace(/\s+market$/i, '').trim().toLowerCase().replace(/^\w/, c => c.toUpperCase())
@@ -348,15 +367,15 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
   const softBadge = getMarketSoftBadgeStyle(marketName || '', accentColor);
 
   return (
-    <div className={`relative flex flex-col h-full ${showMarketRibbon ? 'pt-5 sm:pt-5.5' : ''}`}>
+    <div className={`relative flex flex-col h-full ${showMarketRibbon ? (isMini ? 'pt-4 sm:pt-5' : 'pt-5 sm:pt-5.5') : ''}`}>
       {/* Market Name Tab - Sits UNDER the card (z-0), soft brand color matching the market */}
       {showMarketRibbon && formattedMarketName && (
         <div 
-          className={`absolute top-0 left-0 z-0 ${softBadge.bg} ${softBadge.text} px-2.5 sm:px-3 pt-0.5 pb-2 rounded-t-lg sm:rounded-t-xl flex items-center justify-center pointer-events-none select-none max-w-[85%] shadow-xs`}
-          style={{ height: '28px', backgroundColor: softBadge.hex }}
+          className={`absolute top-0 left-0 z-0 ${softBadge.bg} ${softBadge.text} ${isMini ? 'px-2 sm:px-2.5 pt-0.5 pb-1.5' : 'px-2.5 sm:px-3 pt-0.5 pb-2'} rounded-t-lg sm:rounded-t-xl flex items-center justify-center pointer-events-none select-none max-w-[88%] shadow-xs`}
+          style={{ height: isMini ? '23px' : '28px', backgroundColor: softBadge.hex }}
           title={marketName}
         >
-          <span className="text-[11px] sm:text-xs font-black tracking-tight whitespace-nowrap leading-none">
+          <span className={`${isMini ? 'text-[9.5px] sm:text-[11px]' : 'text-[11px] sm:text-xs'} font-black tracking-tight whitespace-nowrap leading-none`}>
             {formattedMarketName}
           </span>
         </div>
@@ -407,54 +426,85 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
           ${isListMode
             ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-28 sm:h-28 rounded-lg shrink-0'
             : isRowOnMobile
-              ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-full sm:aspect-[4/3] rounded-lg sm:rounded-none shrink-0'
-              : 'aspect-[4/3] w-full'}
+              ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-full sm:aspect-[6/5] rounded-lg sm:rounded-none shrink-0'
+              : 'aspect-[6/5] w-full'}
           relative overflow-hidden bg-gray-50 flex items-center justify-center
         `}>
           {!imageError ? (
             <img 
               src={imageUrl} 
               alt={cleanName}
-              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-              onError={() => setImageError(true)}
+              className={`w-full h-full object-contain object-center mix-blend-multiply group-hover:scale-105 transition-transform duration-500 ${isExpired ? 'grayscale-[55%] opacity-85' : ''}`}
+              onError={() => {
+                if (explicitImageUrl && !useFallbackBing) {
+                  setUseFallbackBing(true);
+                } else {
+                  setImageError(true);
+                }
+              }}
               loading="lazy"
             />
           ) : (
-            <div className={`w-full h-full flex items-center justify-center bg-${accentColor}-50 flex-col gap-1 text-${accentColor}-300`}>
+            <div className={`w-full h-full flex items-center justify-center ${isExpired ? 'bg-gray-100/70 text-gray-400 grayscale-[55%]' : `bg-${accentColor}-50 text-${accentColor}-300`} flex-col gap-1`}>
               {getCategoryIcon(product.category, true)}
             </div>
+          )}
+
+          {/* Soft light-gray wash overlay for expired products so underlying color faintly shows */}
+          {isExpired && (
+            <div className="absolute inset-0 bg-gray-200/20 pointer-events-none z-[5]" />
           )}
 
           {/* Top Left: Market Logo Icon on top of the image */}
           {marketLogoUrl && (
             <div 
-              className={`absolute top-1.5 left-1.5 z-20 ${isThreeColMobile ? 'w-5 h-5 sm:w-7 sm:h-7' : 'w-6 h-6 sm:w-7 sm:h-7'} rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden pointer-events-none`}
+              className={`absolute ${isMini ? 'top-1 left-1 w-5 h-5 sm:w-6 sm:h-6' : `top-1.5 left-1.5 ${isThreeColMobile ? 'w-5 h-5 sm:w-7 sm:h-7' : 'w-6 h-6 sm:w-7 sm:h-7'}`} z-20 rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden pointer-events-none`}
               title={marketName || "Market"}
             >
               <img src={marketLogoUrl} alt={marketName || "Market"} className="w-full h-full object-contain" />
             </div>
           )}
-        
-        {/* Discount Percentage Badge */}
-        {product.discountPercentage && (
-          <div className={`
-            absolute ${marketLogoUrl ? 'bottom-1.5 left-1.5' : 'top-1 left-1 sm:top-1.5 sm:left-1.5'} bg-emerald-600 text-white font-bold rounded shadow-xs flex items-center z-10
-            ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7.5px] sm:text-[8.5px] px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
-          `}>
-            {product.discountPercentage}
-          </div>
-        )}
 
-        {/* Bottom Right: Quantity/Weight Badge */}
-        {quantityBadge && (
-          <div 
-            className={`absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 z-10 bg-black/75 backdrop-blur-xs text-white font-black ${isThreeColMobile ? 'text-[8.5px] sm:text-xs px-1.5 sm:px-2.5 py-0.5' : 'text-[11px] sm:text-xs md:text-sm px-2 sm:px-2.5 py-0.5'} rounded-md shadow-md tracking-tight select-none pointer-events-none`}
-            title={`Miqdar / Çəki: ${quantityBadge}`}
-          >
-            {quantityBadge}
-          </div>
-        )}
-      </div>
+          {/* Top Left: Discount Percentage Badge (when no market logo sits at top-left) */}
+          {!marketLogoUrl && product.discountPercentage && (
+            <div className={`
+              absolute top-1 left-1 sm:top-1.5 sm:left-1.5 ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center z-10 pointer-events-none
+              ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
+            `}>
+              {product.discountPercentage}
+            </div>
+          )}
+
+          {/* Bottom Left: Cheaper Alternative badge (and Discount Percentage when market logo occupies top-left) */}
+          {(hasCheaperAlternative || (marketLogoUrl && product.discountPercentage)) && (
+            <div className="absolute bottom-1 left-1 sm:bottom-1.5 sm:left-1.5 z-10 flex flex-col items-start gap-0.5 sm:gap-1 pointer-events-none">
+              {hasCheaperAlternative && (
+                <div className={`inline-flex items-center gap-0.5 sm:gap-1 bg-green-100/95 backdrop-blur-xs border border-green-300/80 text-green-800 rounded font-bold shadow-xs ${isThreeColMobile ? 'px-1 sm:px-1.5 py-0.5 text-[7px] sm:text-[9px]' : isMini ? 'px-1 sm:px-1.5 py-0.5 text-[6.5px] sm:text-[8px]' : 'px-1.5 py-0.5 text-[8px] sm:text-[9.5px]'}`}>
+                  <TrendingDown className={isMini || isThreeColMobile ? "w-2 h-2 sm:w-2.5 sm:h-2.5" : "w-2.5 h-2.5"} />
+                  {isMini || isThreeColMobile ? <><span className="sm:hidden">Ucuz</span><span className="hidden sm:inline">Daha Ucuz</span></> : 'Ucuz'}
+                </div>
+              )}
+              {marketLogoUrl && product.discountPercentage && (
+                <div className={`
+                  ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center
+                  ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
+                `}>
+                  {product.discountPercentage}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Bottom Right: Quantity/Weight Badge */}
+          {quantityBadge && (
+            <div 
+              className={`absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 z-10 bg-black/75 backdrop-blur-xs text-white font-black ${isThreeColMobile ? 'text-[8.5px] sm:text-xs px-1.5 sm:px-2.5 py-0.5' : isMini ? 'text-[8px] sm:text-[11px] px-1.5 sm:px-2 py-0.5' : 'text-[11px] sm:text-xs md:text-sm px-2 sm:px-2.5 py-0.5'} rounded-md shadow-md tracking-tight select-none pointer-events-none`}
+              title={`Miqdar / Çəki: ${quantityBadge}`}
+            >
+              {quantityBadge}
+            </div>
+          )}
+        </div>
 
       {/* Content Area */}
       <div className={`${
@@ -474,7 +524,9 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
                 ? 'min-h-0 sm:min-h-[2.8rem] pr-6 sm:pr-0'
                 : isThreeColMobile
                   ? 'min-h-[2rem] sm:min-h-[2.8rem]'
-                  : 'min-h-[2.4rem] sm:min-h-[2.8rem]'
+                  : isMini
+                    ? 'min-h-[1.85rem] sm:min-h-[2.3rem]'
+                    : 'min-h-[2.4rem] sm:min-h-[2.8rem]'
           } flex items-start`}>
             <h3 
               className={`font-bold text-gray-900 line-clamp-2 leading-snug ${
@@ -485,7 +537,7 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
                     : isThreeColMobile
                       ? 'text-[10.5px] xs:text-[11.5px] sm:text-[13px] md:text-sm'
                       : isMini
-                        ? 'text-[10px] sm:text-[11.5px]'
+                        ? 'text-[9.5px] sm:text-[11.5px]'
                         : 'text-xs sm:text-[13px] md:text-sm'
               }`} 
               title={product.productName}
@@ -493,29 +545,22 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
               {cleanName}
             </h3>
           </div>
-          
-          {hasCheaperAlternative && (
-            <div className={isMini || isThreeColMobile ? "mt-0.5 sm:mt-1" : "mt-1"}>
-              <div className={`inline-flex items-center gap-0.5 sm:gap-1 bg-green-100 border border-green-200 text-green-700 rounded font-bold ${isThreeColMobile ? 'px-1 sm:px-1.5 py-0.5 text-[7px] sm:text-[9.5px]' : isMini ? 'px-1.5 py-0.5 text-[7.5px] sm:text-[8.5px]' : 'px-1.5 py-0.5 text-[8.5px] sm:text-[9.5px]'}`}>
-                <TrendingDown className={isMini || isThreeColMobile ? "w-2 h-2 sm:w-2.5 sm:h-2.5" : "w-2.5 h-2.5"} />
-                {isMini || isThreeColMobile ? <><span className="sm:hidden">Ucuz</span><span className="hidden sm:inline">Daha Ucuzu Var</span></> : 'Daha Ucuzu Var'}
-              </div>
-            </div>
-          )}
         </div>
         
         {/* Price Row */}
-        <div className={`${isThreeColMobile ? 'mt-1 sm:mt-2 pt-1 sm:pt-1.5 flex-wrap sm:flex-nowrap' : 'mt-2 pt-1.5'} border-t border-gray-100 flex items-center justify-between gap-1`}>
+        <div className={`${isThreeColMobile || isMini ? 'mt-1 sm:mt-1.5 pt-1 sm:pt-1.5 flex-wrap sm:flex-nowrap' : 'mt-2 pt-1.5'} border-t border-gray-100 flex items-center justify-between gap-1`}>
           {/* Left: Prices */}
           <div className="flex items-baseline gap-1 sm:gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden min-w-0">
-            <span className={`font-black text-emerald-600 leading-none ${
+            <span className={`font-black ${isExpired ? 'text-gray-500' : 'text-emerald-600'} leading-none ${
               isListMode
                 ? 'text-lg xs:text-xl'
                 : isRowOnMobile
                   ? 'text-lg xs:text-xl sm:text-lg'
                   : isThreeColMobile
                     ? 'text-[13px] xs:text-sm sm:text-lg'
-                    : 'text-base sm:text-lg'
+                    : isMini
+                      ? 'text-[12px] sm:text-base'
+                      : 'text-base sm:text-lg'
             } shrink-0 whitespace-nowrap`}>
               {product.newPrice} <span className="text-[0.8em] font-bold">₼</span>
             </span>
@@ -527,7 +572,9 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
                     ? 'text-xs xs:text-sm sm:text-sm'
                     : isThreeColMobile
                       ? 'text-[9.5px] sm:text-sm'
-                      : 'text-xs sm:text-sm'
+                      : isMini
+                        ? 'text-[8.5px] sm:text-xs'
+                        : 'text-xs sm:text-sm'
               } shrink-0 whitespace-nowrap`}>
                 {product.oldPrice}
               </span>
@@ -535,26 +582,19 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
           </div>
 
           {/* Right: Clock Icon & Remaining Days badge (hidden when hideCountdown or 3-col grid mode is active) */}
-          {!hideCountdown && !isThreeColMobile && (() => {
-            const rawEndDate = extractProductEndDate(product, catalogEndDate);
-            const countdownInfo = calculateDaysLeft(rawEndDate);
-
-            if (!countdownInfo) return null;
-
-            return (
-              <div 
-                className="flex items-center gap-0.5 sm:gap-1 shrink-0 select-none ml-auto"
-                title={`Bitmə tarixi: ${countdownInfo.formattedDate} (${countdownInfo.daysLeft <= 0 ? (countdownInfo.daysLeft === 0 ? 'Bu gün bitir' : 'Bitib') : `${countdownInfo.daysLeft} gün qaldı`})`}
-              >
-                <div className={`${isThreeColMobile ? 'w-2.5 h-2.5 sm:w-4 sm:h-4' : 'w-3.5 h-3.5 sm:w-4 sm:h-4'} rounded-full flex items-center justify-center shrink-0`}>
-                  <Clock className={`${isThreeColMobile ? 'w-2.5 h-2.5 sm:w-3.5 sm:h-3.5' : 'w-3 h-3 sm:w-3.5 sm:h-3.5'} ${countdownInfo.iconColor}`} strokeWidth={2.2} />
-                </div>
-                <span className={`${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5'} font-bold py-0.5 rounded border leading-none shrink-0 ${countdownInfo.badgeStyle}`}>
-                  {countdownInfo.label}
-                </span>
+          {!hideCountdown && !isThreeColMobile && countdownInfo && (
+            <div 
+              className="flex items-center gap-0.5 sm:gap-1 shrink-0 select-none ml-auto"
+              title={`Bitmə tarixi: ${countdownInfo.formattedDate} (${countdownInfo.daysLeft <= 0 ? (countdownInfo.daysLeft === 0 ? 'Bu gün bitir' : 'Bitib') : `${countdownInfo.daysLeft} gün qaldı`})`}
+            >
+              <div className={`${isThreeColMobile ? 'w-2.5 h-2.5 sm:w-4 sm:h-4' : 'w-3.5 h-3.5 sm:w-4 sm:h-4'} rounded-full flex items-center justify-center shrink-0`}>
+                <Clock className={`${isThreeColMobile ? 'w-2.5 h-2.5 sm:w-3.5 sm:h-3.5' : 'w-3 h-3 sm:w-3.5 sm:h-3.5'} ${countdownInfo.iconColor}`} strokeWidth={2.2} />
               </div>
-            );
-          })()}
+              <span className={`${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5'} font-bold py-0.5 rounded border leading-none shrink-0 ${countdownInfo.badgeStyle}`}>
+                {countdownInfo.label}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

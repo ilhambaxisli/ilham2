@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Search, TrendingDown, Heart, X, GalleryVerticalEnd } from 'lucide-react';
+import { Search, TrendingDown, Heart, X, GalleryVerticalEnd, Clock } from 'lucide-react';
+
+const DEFAULT_QUICK_SEARCHES = ['yağ', 'kolbasa', 'cips'];
 
 export interface DockMarketOption {
   id: string;
@@ -12,6 +14,7 @@ export interface DockMarketOption {
 interface BottomSearchDockProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  onQuickSearch?: (query: string) => void;
   maxPrice?: string;
   onMaxPriceChange?: (price: string) => void;
   showCheaperOnly: boolean;
@@ -26,6 +29,7 @@ interface BottomSearchDockProps {
 const BottomSearchDock: React.FC<BottomSearchDockProps> = ({
   searchQuery,
   onSearchChange,
+  onQuickSearch,
   showCheaperOnly,
   onShowCheaperOnlyChange,
   showFavorites,
@@ -91,48 +95,79 @@ const BottomSearchDock: React.FC<BottomSearchDockProps> = ({
           
           {/* Expandable Search Bar (Opens when user taps the Search icon) */}
           {isSearchOpen && (
-            <form 
-              onSubmit={handleSearchSubmit}
-              className="flex relative w-full rounded-2xl border border-emerald-400/80 bg-white ring-2 ring-emerald-500/15 shadow-sm transition-all h-11 sm:h-12 animate-[fadeIn_0.15s_ease-out]"
-            >
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-emerald-600" />
+            <div className="flex flex-col gap-1.5 animate-[fadeIn_0.15s_ease-out]">
+              {/* 3 Default Quick-Search Example Chips (recent-search style) */}
+              <div className="flex items-center gap-1.5 flex-wrap px-0.5">
+                {DEFAULT_QUICK_SEARCHES.map((term) => {
+                  const isActiveTerm = searchQuery.trim().toLowerCase() === term.toLowerCase();
+                  return (
+                    <button
+                      key={term}
+                      type="button"
+                      onClick={() => {
+                        if (onQuickSearch) {
+                          onQuickSearch(term);
+                        } else {
+                          onSearchChange(term);
+                        }
+                        inputRef.current?.blur();
+                      }}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-semibold transition-all cursor-pointer active:scale-95 ${
+                        isActiveTerm
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                          : 'bg-gray-100 hover:bg-emerald-50 border-gray-200/80 hover:border-emerald-200 text-gray-600 hover:text-emerald-700'
+                      }`}
+                    >
+                      <Clock className="w-3 h-3 shrink-0 opacity-65" />
+                      <span>{term}</span>
+                    </button>
+                  );
+                })}
               </div>
-              <input
-                ref={inputRef}
-                type="search"
-                enterKeyHint="search"
-                value={searchQuery}
-                onChange={(e) => onSearchChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  } else if (e.key === 'Escape') {
-                    e.currentTarget.blur();
-                    setIsSearchOpen(false);
-                  }
-                }}
-                className="block w-full pl-11 pr-11 py-2 bg-transparent border-none focus:outline-hidden text-gray-900 placeholder-gray-400 text-sm sm:text-base h-full rounded-2xl font-medium"
-                placeholder={showFavorites ? "Yadda saxlanılanları axtar..." : "Məhsul axtar..."}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (searchQuery) {
-                    onSearchChange('');
-                    inputRef.current?.focus();
-                  } else {
-                    inputRef.current?.blur();
-                    setIsSearchOpen(false);
-                  }
-                }}
-                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-700 transition-colors cursor-pointer"
-                title={searchQuery ? "Axtarışı təmizlə" : "Axtarışı bağla"}
-                aria-label={searchQuery ? "Axtarışı təmizlə" : "Axtarışı bağla"}
+
+              <form 
+                onSubmit={handleSearchSubmit}
+                className="flex relative w-full rounded-2xl border border-emerald-400/80 bg-white ring-2 ring-emerald-500/15 shadow-sm transition-all h-11 sm:h-12"
               >
-                <X className="h-5 w-5" />
-              </button>
-            </form>
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-emerald-600" />
+                </div>
+                <input
+                  ref={inputRef}
+                  type="search"
+                  enterKeyHint="search"
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.currentTarget.blur();
+                    } else if (e.key === 'Escape') {
+                      e.currentTarget.blur();
+                      setIsSearchOpen(false);
+                    }
+                  }}
+                  className="block w-full pl-11 pr-11 py-2 bg-transparent border-none focus:outline-hidden text-gray-900 placeholder-gray-400 text-sm sm:text-base h-full rounded-2xl font-medium"
+                  placeholder={showFavorites ? "Yadda saxlanılanları axtar..." : "Məhsul axtar..."}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (searchQuery) {
+                      onSearchChange('');
+                      inputRef.current?.focus();
+                    } else {
+                      inputRef.current?.blur();
+                      setIsSearchOpen(false);
+                    }
+                  }}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-700 transition-colors cursor-pointer"
+                  title={searchQuery ? "Axtarışı təmizlə" : "Axtarışı bağla"}
+                  aria-label={searchQuery ? "Axtarışı təmizlə" : "Axtarışı bağla"}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </form>
+            </div>
           )}
 
           {/* Main Bottom Action Row: Fürsətlər, Seçilənlər, Swipe Icon, and Search Icon */}

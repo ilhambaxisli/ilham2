@@ -38,6 +38,8 @@ interface OpportunityDetailModalProps {
   checkIsFavorite?: (productName: string, marketId: string) => boolean;
   onToggleFavorite?: (product: DiscountProduct, marketId: string) => void;
   onEnsureFavorite?: (product: DiscountProduct, marketId: string) => void;
+  zIndexClass?: string;
+  singleItemView?: boolean;
 }
 
 const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
@@ -49,7 +51,9 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
   onMarketClick,
   checkIsFavorite,
   onToggleFavorite,
-  onEnsureFavorite
+  onEnsureFavorite,
+  zIndexClass = 'z-[100]',
+  singleItemView = false
 }) => {
   const clampedPropIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), initialIndex));
 
@@ -69,31 +73,29 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
   const lastTouchTimeRef = useRef<number>(0);
   const burstTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // Strong iOS/Android background body scroll lock inside useLayoutEffect so viewport height is locked before measuring scroller
+  // Lock background page scroll without collapsing window.scrollY via position: fixed
   useLayoutEffect(() => {
     const savedScrollY = window.scrollY;
-    const originalPosition = document.body.style.position;
-    const originalTop = document.body.style.top;
-    const originalLeft = document.body.style.left;
-    const originalRight = document.body.style.right;
-    const originalOverflow = document.body.style.overflow;
-    const originalOverscroll = document.body.style.overscrollBehavior;
+    const html = document.documentElement;
+    const body = document.body;
+    const origHtmlOverflow = html.style.overflow;
+    const origHtmlOverscroll = html.style.overscrollBehavior;
+    const origBodyOverflow = body.style.overflow;
+    const origBodyOverscroll = body.style.overscrollBehavior;
 
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${savedScrollY}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
-    document.body.style.overflow = 'hidden';
-    document.body.style.overscrollBehavior = 'none';
+    html.style.overflow = 'hidden';
+    html.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
 
     return () => {
-      document.body.style.position = originalPosition;
-      document.body.style.top = originalTop;
-      document.body.style.left = originalLeft;
-      document.body.style.right = originalRight;
-      document.body.style.overflow = originalOverflow;
-      document.body.style.overscrollBehavior = originalOverscroll;
-      window.scrollTo(0, savedScrollY);
+      html.style.overflow = origHtmlOverflow;
+      html.style.overscrollBehavior = origHtmlOverscroll;
+      body.style.overflow = origBodyOverflow;
+      body.style.overscrollBehavior = origBodyOverscroll;
+      if (Math.abs(window.scrollY - savedScrollY) > 1) {
+        window.scrollTo(0, savedScrollY);
+      }
     };
   }, []);
 
@@ -261,6 +263,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
       newPrice: cheapestVariant.originalPriceStr,
       oldPrice: '---',
       discountPercentage: '',
+      imageUrl: item.imageUrl,
       customImageUrl: item.imageUrl
     };
   }, [allMarkets]);
@@ -294,45 +297,47 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
   const hasNext = activeIdx < totalCount - 1;
 
   return (
-    <div className="fixed inset-0 z-[100] select-none overflow-hidden">
+    <div className={`fixed inset-0 ${zIndexClass} select-none overflow-hidden`}>
       {/* Dark Blurred Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm pointer-events-none" />
 
       {/* Desktop/Tablet Floating Up/Down Navigation */}
-      <div className="hidden sm:flex fixed right-4 md:right-8 top-1/2 -translate-y-1/2 z-[115] flex-col items-center gap-3">
-        <button
-          type="button"
-          disabled={!hasPrev}
-          onClick={(e) => { e.stopPropagation(); scrollToIndex(activeIdx - 1); }}
-          className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all ${
-            hasPrev
-              ? 'bg-white hover:bg-emerald-50 text-gray-800 hover:text-emerald-700 hover:scale-110 active:scale-90 cursor-pointer border border-gray-100'
-              : 'bg-white/40 text-gray-400 cursor-not-allowed opacity-40'
-          }`}
-          title="Əvvəlki fürsət (Yuxarı sürüşdür)"
-        >
-          <ChevronUp className="w-6 h-6 stroke-[3]" />
-        </button>
+      {!singleItemView && (
+        <div className="hidden sm:flex fixed right-4 md:right-8 top-1/2 -translate-y-1/2 z-[115] flex-col items-center gap-3">
+          <button
+            type="button"
+            disabled={!hasPrev}
+            onClick={(e) => { e.stopPropagation(); scrollToIndex(activeIdx - 1); }}
+            className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all ${
+              hasPrev
+                ? 'bg-white hover:bg-emerald-50 text-gray-800 hover:text-emerald-700 hover:scale-110 active:scale-90 cursor-pointer border border-gray-100'
+                : 'bg-white/40 text-gray-400 cursor-not-allowed opacity-40'
+            }`}
+            title="Əvvəlki fürsət (Yuxarı sürüşdür)"
+          >
+            <ChevronUp className="w-6 h-6 stroke-[3]" />
+          </button>
 
-        <div className="bg-black/80 backdrop-blur-md text-white text-[11px] font-black px-2.5 py-1.5 rounded-full shadow-lg border border-white/10 tracking-tight flex flex-col items-center leading-none">
-          <span>{activeIdx + 1}</span>
-          <span className="text-[8px] text-gray-400 font-normal">/ {totalCount}</span>
+          <div className="bg-black/80 backdrop-blur-md text-white text-[11px] font-black px-2.5 py-1.5 rounded-full shadow-lg border border-white/10 tracking-tight flex flex-col items-center leading-none">
+            <span>{activeIdx + 1}</span>
+            <span className="text-[8px] text-gray-400 font-normal">/ {totalCount}</span>
+          </div>
+
+          <button
+            type="button"
+            disabled={!hasNext}
+            onClick={(e) => { e.stopPropagation(); scrollToIndex(activeIdx + 1); }}
+            className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all ${
+              hasNext
+                ? 'bg-white hover:bg-emerald-50 text-gray-800 hover:text-emerald-700 hover:scale-110 active:scale-90 cursor-pointer border border-gray-100'
+                : 'bg-white/40 text-gray-400 cursor-not-allowed opacity-40'
+            }`}
+            title="Növbəti fürsət (Aşağı sürüşdür)"
+          >
+            <ChevronDown className="w-6 h-6 stroke-[3]" />
+          </button>
         </div>
-
-        <button
-          type="button"
-          disabled={!hasNext}
-          onClick={(e) => { e.stopPropagation(); scrollToIndex(activeIdx + 1); }}
-          className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all ${
-            hasNext
-              ? 'bg-white hover:bg-emerald-50 text-gray-800 hover:text-emerald-700 hover:scale-110 active:scale-90 cursor-pointer border border-gray-100'
-              : 'bg-white/40 text-gray-400 cursor-not-allowed opacity-40'
-          }`}
-          title="Növbəti fürsət (Aşağı sürüşdür)"
-        >
-          <ChevronDown className="w-6 h-6 stroke-[3]" />
-        </button>
-      </div>
+      )}
 
       {/* Native 120Hz CSS Scroll-Snap Vertical Feed Container */}
       <div
@@ -366,9 +371,9 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
           const savingPct = maxPrice > 0 ? Math.round((saving / maxPrice) * 100) : 0;
 
           const { cleanName, quantity: quantityBadge } = extractQuantityAndCleanName(item.productName);
-          const imgUrl = item.imageUrl
-            ? item.imageUrl
-            : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(item.productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
+          const trimmedItemImg = item.imageUrl?.trim();
+          const bingImg300 = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(item.productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
+          const imgUrl = trimmedItemImg || bingImg300;
 
           const slideIsFavorite = cheapest && checkIsFavorite
             ? checkIsFavorite(item.productName, cheapest.marketId)
@@ -378,7 +383,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
             <div
               key={`opp-slide-${idx}`}
               onClick={(e) => {
-                if (e.target === e.currentTarget) {
+                if (!singleItemView && e.target === e.currentTarget) {
                   onClose();
                 }
               }}
@@ -438,14 +443,16 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <div
-                      className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
-                      title={`Fürsət: ${idx + 1} / ${totalCount}`}
-                    >
-                      <span className="text-emerald-600 font-black">{idx + 1}</span>
-                      <span className="text-gray-400 font-semibold">/</span>
-                      <span>{totalCount}</span>
-                    </div>
+                    {!singleItemView && (
+                      <div
+                        className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
+                        title={`Fürsət: ${idx + 1} / ${totalCount}`}
+                      >
+                        <span className="text-emerald-600 font-black">{idx + 1}</span>
+                        <span className="text-gray-400 font-semibold">/</span>
+                        <span>{totalCount}</span>
+                      </div>
+                    )}
 
                     <button
                       onClick={(e) => { e.stopPropagation(); onClose(); }}
@@ -463,7 +470,13 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                     src={imgUrl}
                     alt={cleanName}
                     draggable={false}
-                    className="w-36 h-36 sm:w-40 sm:h-40 object-contain mix-blend-multiply pointer-events-none select-none"
+                    onError={(e) => {
+                      if (e.currentTarget.dataset.fallbackApplied !== '1') {
+                        e.currentTarget.dataset.fallbackApplied = '1';
+                        e.currentTarget.src = bingImg300;
+                      }
+                    }}
+                    className="w-full h-full p-2.5 object-contain mix-blend-multiply pointer-events-none select-none"
                   />
 
                   {/* Double-tap Center Heart Burst Animation */}
@@ -587,20 +600,8 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                       {sortedVariants.map((variant, vIdx) => {
                         const isCheapest = variant.price === minPrice;
                         const diffFromCheapest = variant.price - minPrice;
-                        return (
-                          <button
-                            key={`${variant.marketId}-${vIdx}`}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onMarketClick?.(variant.marketId, item.productName);
-                            }}
-                            className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer text-left group ${
-                              isCheapest
-                                ? 'bg-emerald-50 border-emerald-300 hover:border-emerald-400 shadow-2xs'
-                                : 'bg-gray-50/90 border-gray-200/70 hover:bg-gray-100/80 hover:border-gray-300'
-                            }`}
-                          >
+                        const rowContent = (
+                          <>
                             <div className="flex items-center gap-2.5 min-w-0 flex-1">
                               <div className="w-7 h-7 rounded-full bg-white border border-gray-200/80 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
                                 {variant.logoUrl ? (
@@ -623,20 +624,48 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                               <span className={`text-sm sm:text-base font-black whitespace-nowrap ${isCheapest ? 'text-emerald-700' : 'text-gray-800'}`}>
                                 {variant.originalPriceStr} ₼
                               </span>
-                              <ArrowRight className={`w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 ${isCheapest ? 'text-emerald-500' : 'text-gray-400'}`} />
+                              {onMarketClick && (
+                                <ArrowRight className={`w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 ${isCheapest ? 'text-emerald-500' : 'text-gray-400'}`} />
+                              )}
                             </div>
+                          </>
+                        );
+                        const rowClass = `w-full flex items-center justify-between p-2.5 rounded-xl border transition-all text-left group ${
+                          onMarketClick ? 'cursor-pointer' : 'cursor-default'
+                        } ${
+                          isCheapest
+                            ? `bg-emerald-50 border-emerald-300 ${onMarketClick ? 'hover:border-emerald-400' : ''} shadow-2xs`
+                            : `bg-gray-50/90 border-gray-200/70 ${onMarketClick ? 'hover:bg-gray-100/80 hover:border-gray-300' : ''}`
+                        }`;
+                        return onMarketClick ? (
+                          <button
+                            key={`${variant.marketId}-${vIdx}`}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onMarketClick(variant.marketId, item.productName);
+                            }}
+                            className={rowClass}
+                          >
+                            {rowContent}
                           </button>
+                        ) : (
+                          <div key={`${variant.marketId}-${vIdx}`} className={rowClass}>
+                            {rowContent}
+                          </div>
                         );
                       })}
                     </div>
                   </div>
 
                   {/* TikTok Swipe & Double-Tap Hint */}
-                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-center gap-2 text-gray-400 text-[11px] font-medium shrink-0">
-                    <ChevronUp className="w-3.5 h-3.5 animate-bounce" />
-                    <span>Yuxarı sürüşdürün · Bəyənmək üçün 2 dəfə toxunun</span>
-                    <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
-                  </div>
+                  {!singleItemView && (
+                    <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-center gap-2 text-gray-400 text-[11px] font-medium shrink-0">
+                      <ChevronUp className="w-3.5 h-3.5 animate-bounce" />
+                      <span>Yuxarı sürüşdürün · Bəyənmək üçün 2 dəfə toxunun</span>
+                      <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -7,10 +7,13 @@ import {
   TrendingDown, 
   Clock, 
   ArrowRight,
-  Heart
+  Heart,
+  RotateCcw,
+  ShoppingBag
 } from 'lucide-react';
 import { DiscountProduct, MarketData } from '../types';
-import { parseDateString, extractProductEndDate, calculateDaysLeft, extractQuantityAndCleanName } from './ProductCard';
+import { parseDateString, extractProductEndDate, calculateDaysLeft, extractQuantityAndCleanName, getExplicitProductImageUrl } from './ProductCard';
+import OpportunityDetailModal, { OpportunityItem } from './OpportunityDetailModal';
 
 export interface ModalProductItem {
   product: DiscountProduct;
@@ -53,6 +56,405 @@ interface ProductDetailModalContentProps extends ProductDetailModalProps {
   items: ModalProductItem[];
 }
 
+interface ZoomableProductImageProps {
+  src: string;
+  fallbackSrc?: string;
+  secondaryFallbackSrc?: string;
+  alt: string;
+  isExpired: boolean;
+  isActiveSlide: boolean;
+  children?: (isZoomed: boolean) => React.ReactNode;
+}
+
+const ZoomableProductImage: React.FC<ZoomableProductImageProps> = ({
+  src,
+  fallbackSrc,
+  secondaryFallbackSrc,
+  alt,
+  isExpired,
+  isActiveSlide,
+  children,
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [fallbackStep, setFallbackStep] = useState<0 | 1 | 2 | 3>(0);
+
+  useEffect(() => {
+    setFallbackStep(0);
+  }, [src, fallbackSrc, secondaryFallbackSrc]);
+
+  const effectiveSrc = fallbackStep === 0
+    ? src
+    : fallbackStep === 1
+      ? (fallbackSrc || secondaryFallbackSrc || src)
+      : fallbackStep === 2
+        ? (secondaryFallbackSrc || fallbackSrc || src)
+        : '';
+
+  const [transform, setTransform] = useState<{
+    scale: number;
+    tx: number;
+    ty: number;
+    animating: boolean;
+  }>({ scale: 1, tx: 0, ty: 0, animating: false });
+
+  const stateRef = useRef<{ scale: number; tx: number; ty: number }>({
+    scale: 1,
+    tx: 0,
+    ty: 0,
+  });
+
+  const gestureRef = useRef<{
+    mode: 'idle' | 'pinch' | 'pan' | 'mouse-pan';
+    startDist: number;
+    startScale: number;
+    startTx: number;
+    startTy: number;
+    startMidX: number;
+    startMidY: number;
+    panStartX: number;
+    panStartY: number;
+    didPinch: boolean;
+    lastTapTime: number;
+    tapStart: { x: number; y: number; time: number } | null;
+  }>({
+    mode: 'idle',
+    startDist: 0,
+    startScale: 1,
+    startTx: 0,
+    startTy: 0,
+    startMidX: 0,
+    startMidY: 0,
+    panStartX: 0,
+    panStartY: 0,
+    didPinch: false,
+    lastTapTime: 0,
+    tapStart: null,
+  });
+
+  const clampPan = useCallback((tx: number, ty: number, scale: number) => {
+    if (scale <= 1.02) return { tx: 0, ty: 0 };
+    const container = containerRef.current;
+    const img = imgRef.current;
+    if (!container || !img) return { tx, ty };
+    const cw = container.clientWidth || 320;
+    const ch = container.clientHeight || 160;
+    const iw = img.offsetWidth || 136;
+    const ih = img.offsetHeight || 136;
+
+    const maxTx = Math.abs(iw * scale - cw) / 2;
+    const maxTy = Math.abs(ih * scale - ch) / 2;
+
+    return {
+      tx: Math.max(-maxTx, Math.min(maxTx, tx)),
+      ty: Math.max(-maxTy, Math.min(maxTy, ty)),
+    };
+  }, []);
+
+  const applyTransform = useCallback((scale: number, tx: number, ty: number, animating = false) => {
+    stateRef.current = { scale, tx, ty };
+    setTransform({ scale, tx, ty, animating });
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    applyTransform(1, 0, 0, true);
+  }, [applyTransform]);
+
+  // Reset zoom when switching slides or product image changes
+  useEffect(() => {
+    if (!isActiveSlide) {
+      stateRef.current = { scale: 1, tx: 0, ty: 0 };
+      setTransform({ scale: 1, tx: 0, ty: 0, animating: false });
+    }
+  }, [isActiveSlide, src]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const getTouchPoint = (clientX: number, clientY: number) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        x: clientX - rect.left - rect.width / 2,
+        y: clientY - rect.top - rect.height / 2,
+      };
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('button')) return;
+
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.max(10, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+        const mid = getTouchPoint((t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2);
+        const g = gestureRef.current;
+        g.mode = 'pinch';
+        g.startDist = dist;
+        g.startScale = stateRef.current.scale;
+        g.startTx = stateRef.current.tx;
+        g.startTy = stateRef.current.ty;
+        g.startMidX = mid.x;
+        g.startMidY = mid.y;
+        g.didPinch = true;
+        g.tapStart = null;
+        return;
+      }
+
+      if (e.touches.length === 1 && stateRef.current.scale > 1.02) {
+        e.preventDefault();
+        e.stopPropagation();
+        const t0 = e.touches[0];
+        const g = gestureRef.current;
+        g.mode = 'pan';
+        g.panStartX = t0.clientX;
+        g.panStartY = t0.clientY;
+        g.startTx = stateRef.current.tx;
+        g.startTy = stateRef.current.ty;
+        g.startScale = stateRef.current.scale;
+        g.didPinch = false;
+        g.tapStart = { x: t0.clientX, y: t0.clientY, time: Date.now() };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      const g = gestureRef.current;
+
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.max(10, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+        const mid = getTouchPoint((t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2);
+
+        if (g.mode !== 'pinch') {
+          g.mode = 'pinch';
+          g.startDist = dist;
+          g.startScale = stateRef.current.scale;
+          g.startTx = stateRef.current.tx;
+          g.startTy = stateRef.current.ty;
+          g.startMidX = mid.x;
+          g.startMidY = mid.y;
+          g.didPinch = true;
+        }
+
+        const nextScale = Math.max(0.9, Math.min(4.2, g.startScale * (dist / g.startDist)));
+        const ratio = nextScale / g.startScale;
+        const rawTx = mid.x - ratio * (g.startMidX - g.startTx);
+        const rawTy = mid.y - ratio * (g.startMidY - g.startTy);
+        const { tx, ty } = clampPan(rawTx, rawTy, nextScale);
+        applyTransform(nextScale, tx, ty, false);
+        return;
+      }
+
+      if (e.touches.length === 1 && g.mode === 'pan' && stateRef.current.scale > 1.02) {
+        e.preventDefault();
+        e.stopPropagation();
+        const t0 = e.touches[0];
+        const dx = t0.clientX - g.panStartX;
+        const dy = t0.clientY - g.panStartY;
+        const { tx, ty } = clampPan(g.startTx + dx, g.startTy + dy, stateRef.current.scale);
+        applyTransform(stateRef.current.scale, tx, ty, false);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const g = gestureRef.current;
+      if (g.mode === 'idle' && !g.didPinch) return;
+
+      if (g.didPinch || stateRef.current.scale > 1.02) {
+        e.stopPropagation();
+      }
+
+      // Transition smoothly from 2-finger pinch to 1-finger pan if 1 finger remains on screen
+      if (e.touches.length === 1 && stateRef.current.scale > 1.05) {
+        const t0 = e.touches[0];
+        g.mode = 'pan';
+        g.panStartX = t0.clientX;
+        g.panStartY = t0.clientY;
+        g.startTx = stateRef.current.tx;
+        g.startTy = stateRef.current.ty;
+        g.tapStart = null;
+        return;
+      }
+
+      if (e.touches.length === 0) {
+        // Double-tap while zoomed resets back to 1x
+        if (g.mode === 'pan' && g.tapStart && e.changedTouches.length > 0) {
+          const touch = e.changedTouches[0];
+          const dx = Math.abs(touch.clientX - g.tapStart.x);
+          const dy = Math.abs(touch.clientY - g.tapStart.y);
+          const dt = Date.now() - g.tapStart.time;
+          if (dx < 12 && dy < 12 && dt < 260) {
+            const now = Date.now();
+            if (now - g.lastTapTime < 330) {
+              g.lastTapTime = 0;
+              g.mode = 'idle';
+              g.didPinch = false;
+              g.tapStart = null;
+              applyTransform(1, 0, 0, true);
+              return;
+            }
+            g.lastTapTime = now;
+          }
+        }
+
+        g.mode = 'idle';
+        g.didPinch = false;
+        g.tapStart = null;
+
+        if (stateRef.current.scale < 1.05) {
+          applyTransform(1, 0, 0, true);
+        } else if (stateRef.current.scale > 4) {
+          const { tx, ty } = clampPan(stateRef.current.tx, stateRef.current.ty, 4);
+          applyTransform(4, tx, ty, true);
+        }
+      }
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      // Support laptop trackpad 2-finger pinch (browsers dispatch wheel + ctrlKey)
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const pt = getTouchPoint(e.clientX, e.clientY);
+      const curScale = stateRef.current.scale;
+      const nextScale = Math.max(1, Math.min(4, curScale * Math.exp(-e.deltaY * 0.01)));
+      if (nextScale <= 1.02) {
+        applyTransform(1, 0, 0, true);
+        return;
+      }
+      const ratio = nextScale / curScale;
+      const rawTx = pt.x - ratio * (pt.x - stateRef.current.tx);
+      const rawTy = pt.y - ratio * (pt.y - stateRef.current.ty);
+      const { tx, ty } = clampPan(rawTx, rawTy, nextScale);
+      applyTransform(nextScale, tx, ty, false);
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
+    el.addEventListener('wheel', onWheel, { passive: false });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, [applyTransform, clampPan]);
+
+  // Desktop mouse drag when zoomed via trackpad pinch
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      const g = gestureRef.current;
+      if (g.mode !== 'mouse-pan') return;
+      const dx = e.clientX - g.panStartX;
+      const dy = e.clientY - g.panStartY;
+      const { tx, ty } = clampPan(g.startTx + dx, g.startTy + dy, stateRef.current.scale);
+      applyTransform(stateRef.current.scale, tx, ty, false);
+    };
+    const onMouseUp = () => {
+      if (gestureRef.current.mode === 'mouse-pan') {
+        gestureRef.current.mode = 'idle';
+      }
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [applyTransform, clampPan]);
+
+  const isZoomed = transform.scale > 1.02;
+
+  return (
+    <div
+      ref={containerRef}
+      data-zoom-image="true"
+      onMouseDown={(e) => {
+        if (!isZoomed) return;
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest('button')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const g = gestureRef.current;
+        g.mode = 'mouse-pan';
+        g.panStartX = e.clientX;
+        g.panStartY = e.clientY;
+        g.startTx = stateRef.current.tx;
+        g.startTy = stateRef.current.ty;
+      }}
+      onDoubleClick={(e) => {
+        if (isZoomed) {
+          e.stopPropagation();
+          resetZoom();
+        }
+      }}
+      style={{ touchAction: isZoomed ? 'none' : 'pan-y' }}
+      className={`relative w-full h-40 sm:h-44 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden ${
+        isZoomed ? 'cursor-grab active:cursor-grabbing' : ''
+      }`}
+    >
+      {fallbackStep < 3 && effectiveSrc ? (
+        <img
+          ref={imgRef}
+          src={effectiveSrc}
+          alt={alt}
+          draggable={false}
+          onError={() => {
+            if (fallbackStep === 0 && fallbackSrc && fallbackSrc !== src) {
+              setFallbackStep(1);
+            } else if (fallbackStep < 2 && secondaryFallbackSrc && secondaryFallbackSrc !== effectiveSrc) {
+              setFallbackStep(2);
+            } else {
+              setFallbackStep(3);
+            }
+          }}
+          style={{
+            transform: `translate3d(${transform.tx}px, ${transform.ty}px, 0) scale(${transform.scale})`,
+            transition: transform.animating ? 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+            transformOrigin: 'center center',
+            willChange: 'transform',
+          }}
+          className={`w-full h-full p-2 object-contain mix-blend-multiply pointer-events-none select-none ${isExpired ? 'grayscale-[55%] opacity-85' : ''}`}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-gray-300">
+          <ShoppingBag className="w-14 h-14 stroke-[1.5]" />
+        </div>
+      )}
+      {isExpired && (
+        <div className="absolute inset-0 bg-gray-200/20 pointer-events-none z-[5]" />
+      )}
+
+      {isZoomed && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            resetZoom();
+          }}
+          className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1 px-2 py-1 rounded-full bg-black/70 hover:bg-black/85 text-white text-[11px] font-bold shadow-md backdrop-blur-xs transition-all active:scale-95 cursor-pointer"
+          title="Ölçünü sıfırla"
+        >
+          <RotateCcw className="w-3 h-3" />
+          <span>{transform.scale.toFixed(1)}x</span>
+        </button>
+      )}
+
+      {children?.(isZoomed)}
+    </div>
+  );
+};
+
 const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   items,
   onClose,
@@ -80,6 +482,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const [burstSlideIdx, setBurstSlideIdx] = useState<number | null>(null);
   const [heartBurstPhase, setHeartBurstPhase] = useState<'hidden' | 'pop' | 'fade'>('hidden');
   const [isMarketDropdownOpen, setIsMarketDropdownOpen] = useState<boolean>(false);
+  const [quickOpportunityItem, setQuickOpportunityItem] = useState<OpportunityItem | null>(null);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const activeIdxRef = useRef<number>(clampedPropIdx);
@@ -95,31 +498,29 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const smoothScrollRafRef = useRef<number | null>(null);
   const pendingDirectJumpRef = useRef<number | null>(null);
 
-  // Strong iOS/Android background body scroll lock inside useLayoutEffect so viewport size is locked before measuring scroller height
+  // Lock background page scroll without collapsing window.scrollY via position: fixed (prevents scroll reset on close/history.go)
   useLayoutEffect(() => {
     const savedScrollY = window.scrollY;
-    const originalPosition = document.body.style.position;
-    const originalTop = document.body.style.top;
-    const originalLeft = document.body.style.left;
-    const originalRight = document.body.style.right;
-    const originalOverflow = document.body.style.overflow;
-    const originalOverscroll = document.body.style.overscrollBehavior;
+    const html = document.documentElement;
+    const body = document.body;
+    const origHtmlOverflow = html.style.overflow;
+    const origHtmlOverscroll = html.style.overscrollBehavior;
+    const origBodyOverflow = body.style.overflow;
+    const origBodyOverscroll = body.style.overscrollBehavior;
 
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${savedScrollY}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
-    document.body.style.overflow = 'hidden';
-    document.body.style.overscrollBehavior = 'none';
+    html.style.overflow = 'hidden';
+    html.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
 
     return () => {
-      document.body.style.position = originalPosition;
-      document.body.style.top = originalTop;
-      document.body.style.left = originalLeft;
-      document.body.style.right = originalRight;
-      document.body.style.overflow = originalOverflow;
-      document.body.style.overscrollBehavior = originalOverscroll;
-      window.scrollTo(0, savedScrollY);
+      html.style.overflow = origHtmlOverflow;
+      html.style.overscrollBehavior = origHtmlOverscroll;
+      body.style.overflow = origBodyOverflow;
+      body.style.overscrollBehavior = origBodyOverscroll;
+      if (Math.abs(window.scrollY - savedScrollY) > 1) {
+        window.scrollTo(0, savedScrollY);
+      }
     };
   }, []);
 
@@ -348,6 +749,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (quickOpportunityItem) return;
       if (e.key === 'ArrowDown' || e.key === 'PageDown') {
         if (activeIdxRef.current < items.length - 1) {
           e.preventDefault();
@@ -364,7 +766,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items.length, scrollToIndex, onClose]);
+  }, [items.length, scrollToIndex, onClose, quickOpportunityItem]);
 
   const parsePriceNumber = (val: any): number => {
     if (val === null || val === undefined) return NaN;
@@ -375,54 +777,126 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
   const activeItem = items[activeIdx] || items[0] || null;
 
-  // Comparison list for currently active item when Fürsətlər mode is active
-  const comparisonData = useMemo(() => {
-    if (!showComparisons || !activeItem) return [];
-    const curProd = activeItem.product;
-    const normalize = (s: string) => (s || '').trim().toLowerCase();
-    const sourceName = normalize(curProd.productName);
-    const currentPrice = parsePriceNumber(curProd.newPrice);
-    if (isNaN(currentPrice)) return [];
-
-    const alternatives: { 
-      marketId: string, 
-      marketName: string, 
-      logoUrl?: string,
-      logoPlaceholder: string,
-      themeColor: string,
-      price: number, 
-      diff: number, 
-      product: DiscountProduct 
-    }[] = [];
+  // Indexed lookup across all markets so every slide can display where a product is cheaper
+  const allProductsPriceIndex = useMemo(() => {
+    const map = new Map<string, Array<{
+      marketId: string;
+      marketName: string;
+      logoUrl?: string;
+      logoPlaceholder: string;
+      themeColor: string;
+      price: number;
+      product: DiscountProduct;
+    }>>();
 
     allMarkets.forEach(market => {
-      if (market.name === activeItem.marketName) return;
       const marketProducts = market.catalogs && market.catalogs.length > 0
         ? market.catalogs.flatMap(c => c.products)
         : market.products || [];
-      const match = marketProducts.find(p => normalize(p.productName) === sourceName);
-      if (match) {
-        const matchPrice = parsePriceNumber(match.newPrice);
-        if (!isNaN(matchPrice)) {
-          const diff = currentPrice - matchPrice;
-          if (diff > 0) {
-            alternatives.push({
-              marketId: market.id,
-              marketName: market.name,
-              logoUrl: market.logoUrl,
-              logoPlaceholder: market.logoPlaceholder,
-              themeColor: market.themeColor,
-              price: matchPrice,
-              diff,
-              product: match
-            });
-          }
-        }
+      marketProducts.forEach(prod => {
+        const key = (prod.productName || '').trim().toLowerCase();
+        if (!key) return;
+        const price = parsePriceNumber(prod.newPrice);
+        if (isNaN(price)) return;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push({
+          marketId: market.id,
+          marketName: market.name,
+          logoUrl: market.logoUrl,
+          logoPlaceholder: market.logoPlaceholder,
+          themeColor: market.themeColor,
+          price,
+          product: prod
+        });
+      });
+    });
+
+    return map;
+  }, [allMarkets]);
+
+  const getCheaperAlternativesForSlide = useCallback((prod: DiscountProduct, curMarketId?: string, curMarketName?: string) => {
+    const key = (prod.productName || '').trim().toLowerCase();
+    const currentPrice = parsePriceNumber(prod.newPrice);
+    if (!key || isNaN(currentPrice)) return [];
+    const candidates = allProductsPriceIndex.get(key);
+    if (!candidates || candidates.length === 0) return [];
+    const curLower = (curMarketName || '').trim().toLowerCase();
+    const seenMarkets = new Set<string>();
+    const results: Array<{
+      marketId: string;
+      marketName: string;
+      logoUrl?: string;
+      logoPlaceholder: string;
+      themeColor: string;
+      price: number;
+      diff: number;
+      product: DiscountProduct;
+    }> = [];
+
+    candidates.forEach(cand => {
+      if (curMarketId && cand.marketId === curMarketId) return;
+      if (curLower && cand.marketName.trim().toLowerCase() === curLower) return;
+      if (cand.price >= currentPrice) return;
+      if (seenMarkets.has(cand.marketId)) return;
+      seenMarkets.add(cand.marketId);
+      results.push({
+        ...cand,
+        diff: currentPrice - cand.price
+      });
+    });
+
+    return results.sort((a, b) => b.diff - a.diff);
+  }, [allProductsPriceIndex]);
+
+  const openPriceComparisonPopup = useCallback((prod: DiscountProduct, explicitFallbackImg?: string) => {
+    const key = (prod.productName || '').trim().toLowerCase();
+    if (!key) return;
+    const candidates = allProductsPriceIndex.get(key) || [];
+    const byMarket = new Map<string, {
+      marketId: string;
+      marketName: string;
+      price: number;
+      originalPriceStr: string;
+      logoUrl?: string;
+      logoPlaceholder: string;
+      themeColor: string;
+    }>();
+
+    let bestImg = explicitFallbackImg;
+    candidates.forEach(cand => {
+      const candImg = getExplicitProductImageUrl(cand.product);
+      if (!bestImg && candImg) bestImg = candImg;
+      const existing = byMarket.get(cand.marketId);
+      const variant = {
+        marketId: cand.marketId,
+        marketName: cand.marketName,
+        price: cand.price,
+        originalPriceStr: String(cand.product.newPrice ?? ''),
+        logoUrl: cand.logoUrl,
+        logoPlaceholder: cand.logoPlaceholder,
+        themeColor: cand.themeColor
+      };
+      if (!existing || cand.price < existing.price) {
+        byMarket.set(cand.marketId, variant);
       }
     });
 
-    return alternatives.sort((a, b) => b.diff - a.diff);
-  }, [activeItem, allMarkets, showComparisons]);
+    const variants = Array.from(byMarket.values());
+    if (variants.length < 2) return;
+
+    setQuickOpportunityItem({
+      productName: prod.productName,
+      category: prod.category,
+      imageUrl: bestImg,
+      variants
+    });
+  }, [allProductsPriceIndex]);
+
+  // Keep comparisonData for scroll overflow if needed when in Fürsətlər mode with >2 alternatives
+  const comparisonData = useMemo(() => {
+    if (!showComparisons || !activeItem) return [];
+    return getCheaperAlternativesForSlide(activeItem.product, activeItem.marketId, activeItem.marketName);
+  }, [activeItem, showComparisons, getCheaperAlternativesForSlide]);
 
   const findMarketForItem = useCallback((item: ModalProductItem) => {
     if (!allMarkets || allMarkets.length === 0) return null;
@@ -551,17 +1025,20 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
           const mkt = findMarketForItem(item);
           const effectiveEndDate = extractProductEndDate(p, item.catalogEndDate);
           const countdownInfo = calculateDaysLeft(effectiveEndDate);
+          const isExpired = Boolean(countdownInfo && countdownInfo.daysLeft < 0);
           const formattedEndDate = countdownInfo?.formattedDate || formatEndDate(effectiveEndDate);
           const { cleanName, quantity: quantityBadge } = extractQuantityAndCleanName(p.productName);
-          const imgUrl = p.customImageUrl 
-            ? p.customImageUrl 
-            : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(p.productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
+          const explicitImgUrl = getExplicitProductImageUrl(p);
+          const bingImgUrl300 = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(p.productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
+          const bingImgUrl200 = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(p.productName + ' product')}&w=200&h=200&c=7&rs=1&p=0`;
+          const imgUrl = explicitImgUrl || bingImgUrl300;
 
           const slideIsFavorite = checkIsFavorite
             ? checkIsFavorite(item)
             : (idx === activeIdx ? isFavorite : false);
 
           const isCurrentSlide = idx === activeIdx;
+          const slideComparisons = getCheaperAlternativesForSlide(p, mkt?.id || item.marketId, mName);
 
           return (
             <div
@@ -769,67 +1246,71 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                   </div>
                 </div>
 
-                {/* Product Image */}
-                <div className="relative w-full h-40 sm:h-44 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
-                  <img 
-                    src={imgUrl} 
-                    alt={cleanName} 
-                    draggable={false}
-                    className="w-32 h-32 sm:w-36 sm:h-36 object-contain mix-blend-multiply pointer-events-none select-none"
-                  />
+                {/* Product Image with 2-Finger Pinch-to-Zoom */}
+                <ZoomableProductImage
+                  src={imgUrl}
+                  fallbackSrc={bingImgUrl300}
+                  secondaryFallbackSrc={bingImgUrl200}
+                  alt={cleanName}
+                  isExpired={isExpired}
+                  isActiveSlide={isCurrentSlide}
+                >
+                  {(isZoomed) => (
+                    <>
+                      {/* Double-tap Center Heart Burst Animation */}
+                      {burstSlideIdx === idx && heartBurstPhase !== 'hidden' && (
+                        <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
+                          <Heart 
+                            className={`w-24 h-24 fill-red-500 text-red-500 drop-shadow-[0_8px_20px_rgba(239,68,68,0.45)] transition-all duration-300 ease-out ${
+                              heartBurstPhase === 'pop' 
+                                ? 'scale-110 opacity-100' 
+                                : 'scale-150 opacity-0'
+                            }`}
+                            strokeWidth={1.5}
+                          />
+                        </div>
+                      )}
 
-                  {/* Double-tap Center Heart Burst Animation */}
-                  {burstSlideIdx === idx && heartBurstPhase !== 'hidden' && (
-                    <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
-                      <Heart 
-                        className={`w-24 h-24 fill-red-500 text-red-500 drop-shadow-[0_8px_20px_rgba(239,68,68,0.45)] transition-all duration-300 ease-out ${
-                          heartBurstPhase === 'pop' 
-                            ? 'scale-110 opacity-100' 
-                            : 'scale-150 opacity-0'
-                        }`}
-                        strokeWidth={1.5}
-                      />
-                    </div>
+                      {/* Mobile TikTok quick up/down buttons */}
+                      <div className={`sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2 transition-opacity duration-150 ${isZoomed ? 'opacity-0 pointer-events-none' : ''}`}>
+                        {idx > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); scrollToIndex(idx - 1); }}
+                            className="w-8 h-8 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
+                            title="Əvvəlki məhsul"
+                          >
+                            <ChevronUp className="w-5 h-5 stroke-[2.5]" />
+                          </button>
+                        )}
+                        {idx < items.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); scrollToIndex(idx + 1); }}
+                            className="w-8 h-8 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
+                            title="Növbəti məhsul"
+                          >
+                            <ChevronDown className="w-5 h-5 stroke-[2.5]" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Discount Badge */}
+                      {p.discountPercentage && (
+                        <div className={`absolute top-2.5 left-2.5 ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white px-2.5 py-1 rounded-md text-xs font-bold shadow-sm z-10 transition-opacity duration-150 ${isZoomed ? 'opacity-0 pointer-events-none' : ''}`}>
+                          {p.discountPercentage}
+                        </div>
+                      )}
+
+                      {/* Quantity Badge */}
+                      {quantityBadge && (
+                        <div className={`absolute bottom-2.5 right-2.5 bg-black/75 backdrop-blur-xs text-white px-2.5 py-1 rounded-lg text-xs font-black shadow-md tracking-tight transition-opacity duration-150 ${isZoomed ? 'opacity-0 pointer-events-none' : ''}`}>
+                          {quantityBadge}
+                        </div>
+                      )}
+                    </>
                   )}
-
-                  {/* Mobile TikTok quick up/down buttons */}
-                  <div className="sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
-                    {idx > 0 && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); scrollToIndex(idx - 1); }}
-                        className="w-8 h-8 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
-                        title="Əvvəlki məhsul"
-                      >
-                        <ChevronUp className="w-5 h-5 stroke-[2.5]" />
-                      </button>
-                    )}
-                    {idx < items.length - 1 && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); scrollToIndex(idx + 1); }}
-                        className="w-8 h-8 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
-                        title="Növbəti məhsul"
-                      >
-                        <ChevronDown className="w-5 h-5 stroke-[2.5]" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Discount Badge */}
-                  {p.discountPercentage && (
-                    <div className="absolute top-2.5 left-2.5 bg-emerald-600 text-white px-2.5 py-1 rounded-md text-xs font-bold shadow-sm">
-                      {p.discountPercentage}
-                    </div>
-                  )}
-
-                  {/* Quantity Badge */}
-                  {quantityBadge && (
-                    <div className="absolute bottom-2.5 right-2.5 bg-black/75 backdrop-blur-xs text-white px-2.5 py-1 rounded-lg text-xs font-black shadow-md tracking-tight">
-                      {quantityBadge}
-                    </div>
-                  )}
-                </div>
+                </ZoomableProductImage>
 
                 {/* Product Info Content */}
                 <div className={`px-3.5 py-2.5 sm:px-4 sm:py-3 flex-1 flex flex-col justify-between ${isCurrentSlide && showComparisons && comparisonData.length > 0 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}>
@@ -853,12 +1334,46 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     </div>
 
                     <div className="flex items-start justify-between gap-3 py-1">
-                      <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-snug line-clamp-2 flex-1 min-w-0">
-                        {cleanName}
-                      </h2>
+                      <div className="flex-1 min-w-0">
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-snug line-clamp-2">
+                          {cleanName}
+                        </h2>
+
+                        {slideComparisons.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            <div className="flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 uppercase tracking-wide">
+                              <TrendingDown className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>Burada daha ucuz var:</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {slideComparisons.slice(0, 2).map((compItem, cIdx) => (
+                                <button
+                                  key={cIdx}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openPriceComparisonPopup(p, explicitImgUrl);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/90 text-emerald-900 text-[11px] font-bold shadow-2xs transition-all active:scale-95 cursor-pointer max-w-full"
+                                  title="Qiymət fərqini göstər"
+                                >
+                                  {compItem.logoUrl ? (
+                                    <img src={compItem.logoUrl} alt={compItem.marketName} className="w-3.5 h-3.5 object-contain rounded-xs shrink-0" />
+                                  ) : (
+                                    <span className="text-[9px] font-black text-emerald-700 shrink-0">{compItem.logoPlaceholder}</span>
+                                  )}
+                                  <span className="truncate">{compItem.marketName}</span>
+                                  <span className="font-black text-emerald-700 shrink-0">{compItem.product.newPrice} ₼</span>
+                                  <ArrowRight className="w-3 h-3 text-emerald-500 shrink-0" />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
                       <div className="flex flex-col items-end shrink-0 text-right">
-                        <span className="text-3xl font-black text-green-600 tracking-tight leading-none whitespace-nowrap">
+                        <span className={`text-3xl font-black ${isExpired ? 'text-gray-500' : 'text-green-600'} tracking-tight leading-none whitespace-nowrap`}>
                           {p.newPrice} <span className="text-xl">₼</span>
                         </span>
                         {p.oldPrice && p.oldPrice !== '---' && (
@@ -920,9 +1435,11 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                             const upTargetIdx = idx + 1 + upOffset;
                             const upProd = upItem.product;
                             const { cleanName: upCleanName } = extractQuantityAndCleanName(upProd.productName);
-                            const upImgUrl = upProd.customImageUrl
-                              ? upProd.customImageUrl
-                              : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(upProd.productName + ' product')}&w=150&h=150&c=7&rs=1&p=0`;
+                            const upCountdown = calculateDaysLeft(extractProductEndDate(upProd, upItem.catalogEndDate));
+                            const upExpired = Boolean(upCountdown && upCountdown.daysLeft < 0);
+                            const upExplicitImg = getExplicitProductImageUrl(upProd);
+                            const upBingImg = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(upProd.productName + ' product')}&w=150&h=150&c=7&rs=1&p=0`;
+                            const upImgUrl = upExplicitImg || upBingImg;
                             return (
                               <button
                                 key={`up-${upTargetIdx}`}
@@ -934,19 +1451,28 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                 className="group w-[78px] sm:w-[82px] shrink-0 snap-start flex flex-col items-center p-1 rounded-xl bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-400 shadow-2xs transition-all cursor-pointer active:scale-95 text-center"
                                 title={upCleanName}
                               >
-                                <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                                <div className="relative w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
                                   <img
                                     src={upImgUrl}
                                     alt={upCleanName}
                                     loading="lazy"
                                     draggable={false}
-                                    className="w-8 h-8 object-contain mix-blend-multiply pointer-events-none select-none"
+                                    onError={(e) => {
+                                      if (e.currentTarget.dataset.fallbackApplied !== '1') {
+                                        e.currentTarget.dataset.fallbackApplied = '1';
+                                        e.currentTarget.src = upBingImg;
+                                      }
+                                    }}
+                                    className={`w-8 h-8 object-contain mix-blend-multiply pointer-events-none select-none ${upExpired ? 'grayscale-[55%] opacity-85' : ''}`}
                                   />
+                                  {upExpired && (
+                                    <div className="absolute inset-0 bg-gray-200/20 pointer-events-none" />
+                                  )}
                                 </div>
                                 <span className="w-full text-[9px] font-semibold text-gray-800 group-hover:text-emerald-800 truncate leading-tight mt-0.5">
                                   {upCleanName}
                                 </span>
-                                <span className="text-[10px] font-black text-green-600 leading-none mt-0.5">
+                                <span className={`text-[10px] font-black ${upExpired ? 'text-gray-500' : 'text-green-600'} leading-none mt-0.5`}>
                                   {upProd.newPrice} ₼
                                 </span>
                               </button>
@@ -956,15 +1482,15 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                       </div>
                     )}
 
-                    {/* COMPARISON LIST */}
-                    {isCurrentSlide && showComparisons && comparisonData.length > 0 && (
+                    {/* Remaining COMPARISON LIST if more than 2 alternatives in Fürsətlər mode */}
+                    {isCurrentSlide && showComparisons && comparisonData.length > 2 && (
                       <div className="mt-4 pt-4 border-t border-dashed border-gray-200 animate-[fadeIn_0.3s_ease-out]">
                         <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                           <TrendingDown className="w-4 h-4 text-green-600" />
-                          Daha Ucuz Alternativlər
+                          Digər Ucuz Alternativlər
                         </h4>
                         <div className="space-y-2">
-                          {comparisonData.map((compItem, cIdx) => (
+                          {comparisonData.slice(2).map((compItem, cIdx) => (
                             <div 
                               key={cIdx} 
                               onClick={() => onCompareClick(compItem.marketId, compItem.product.productName)}
@@ -1001,6 +1527,39 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
           );
         })}
       </div>
+
+      {/* Price Difference Modal from Fürsətlər (closes with X and keeps user at exact spot) */}
+      <OpportunityDetailModal
+        isOpen={quickOpportunityItem !== null}
+        onClose={() => setQuickOpportunityItem(null)}
+        items={quickOpportunityItem ? [quickOpportunityItem] : []}
+        initialIndex={0}
+        allMarkets={allMarkets}
+        zIndexClass="z-[130]"
+        singleItemView={true}
+        checkIsFavorite={checkIsFavorite ? (productName, marketId) => {
+          const m = allMarkets.find(mk => mk.id === marketId);
+          return checkIsFavorite({
+            product: {
+              productName,
+              category: quickOpportunityItem?.category || items[activeIdx]?.product.category || 'Digər',
+              newPrice: '0',
+              oldPrice: '---',
+              discountPercentage: ''
+            },
+            marketName: m?.name || '',
+            marketId
+          });
+        } : undefined}
+        onToggleFavorite={onToggleFavoriteItem ? (prod, marketId) => {
+          const m = allMarkets.find(mk => mk.id === marketId);
+          onToggleFavoriteItem({ product: prod, marketName: m?.name || '', marketId });
+        } : undefined}
+        onEnsureFavorite={onEnsureFavoriteItem ? (prod, marketId) => {
+          const m = allMarkets.find(mk => mk.id === marketId);
+          onEnsureFavoriteItem({ product: prod, marketName: m?.name || '', marketId });
+        } : undefined}
+      />
     </div>
   );
 };

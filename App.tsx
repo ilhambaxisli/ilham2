@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Header from './components/Header';
 import BottomSearchDock from './components/BottomSearchDock';
-import ProductCard from './components/ProductCard';
+import ProductCard, { extractProductEndDate, calculateDaysLeft } from './components/ProductCard';
 import GroupedProductCard from './components/GroupedProductCard';
 import ScannerModal from './components/ScannerModal';
 import AdminLoginModal from './components/AdminLoginModal';
@@ -650,8 +650,12 @@ const normalizeMarketProduct = (p: DiscountProduct): DiscountProduct => {
     (p as any).expiry_date || 
     (p as any).son_tarix || 
     (p as any).sonTarix;
+  const rawImageUrl = typeof (p as any).imageUrl === 'string' ? (p as any).imageUrl.trim() : '';
+  const rawCustomImageUrl = typeof p.customImageUrl === 'string' ? p.customImageUrl.trim() : '';
   return {
     ...p,
+    imageUrl: rawImageUrl || undefined,
+    customImageUrl: rawCustomImageUrl || undefined,
     expiryDate: exp ? String(exp).trim() : undefined,
     bitis: (p as any).bitis || (exp ? String(exp).trim() : undefined)
   };
@@ -717,6 +721,19 @@ const migrateMarketData = (incomingMarkets: MarketData[]): MarketData[] => {
   return sortMarketsByOrder(migrated);
 };
 
+const CATEGORY_TAG_COLORS = [
+  { chip: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100', count: 'bg-emerald-100/90 text-emerald-800' },
+  { chip: 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100', count: 'bg-sky-100/90 text-sky-800' },
+  { chip: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100', count: 'bg-amber-100/90 text-amber-900' },
+  { chip: 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100', count: 'bg-rose-100/90 text-rose-800' },
+  { chip: 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100', count: 'bg-violet-100/90 text-violet-800' },
+  { chip: 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100', count: 'bg-teal-100/90 text-teal-800' },
+  { chip: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100', count: 'bg-orange-100/90 text-orange-800' },
+  { chip: 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100', count: 'bg-indigo-100/90 text-indigo-800' },
+  { chip: 'bg-pink-50 text-pink-700 border-pink-200 hover:bg-pink-100', count: 'bg-pink-100/90 text-pink-800' },
+  { chip: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100', count: 'bg-cyan-100/90 text-cyan-800' },
+];
+
 const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig | null>(() => {
@@ -780,7 +797,10 @@ const App: React.FC = () => {
       const el = featuredCarouselRef.current;
       const scrollLeft = el.scrollLeft;
       const firstChild = el.firstElementChild as HTMLElement | null;
-      const itemWidth = firstChild ? firstChild.offsetWidth + 8 : 150;
+      const secondChild = el.children[1] as HTMLElement | undefined;
+      const itemWidth = (firstChild && secondChild)
+        ? Math.max(1, secondChild.offsetLeft - firstChild.offsetLeft)
+        : (firstChild ? firstChild.offsetWidth + 6 : 110);
       const index = Math.round(scrollLeft / itemWidth);
       setCarouselActiveIndex(Math.max(0, index));
     }
@@ -849,6 +869,24 @@ const App: React.FC = () => {
     currentIndex?: number;
   } | null>(null);
   const [opportunityModalIndex, setOpportunityModalIndex] = useState<number | null>(null);
+  const [opportunityCols, setOpportunityCols] = useState<number>(() => {
+    if (typeof window === 'undefined') return 2;
+    const w = window.innerWidth;
+    if (w >= 1024) return 5;
+    if (w >= 768) return 4;
+    if (w >= 640) return 3;
+    return 2;
+  });
+
+  useEffect(() => {
+    const updateCols = () => {
+      const w = window.innerWidth;
+      const next = w >= 1024 ? 5 : w >= 768 ? 4 : w >= 640 ? 3 : 2;
+      setOpportunityCols(prev => (prev === next ? prev : next));
+    };
+    window.addEventListener('resize', updateCols);
+    return () => window.removeEventListener('resize', updateCols);
+  }, []);
 
   const handleSelectIndexInModal = (newIdx: number) => {
     setViewProduct(prev => {
@@ -916,8 +954,8 @@ const App: React.FC = () => {
       const el = document.getElementById(targetId);
       if (el) {
         const headerOffset = stickyHeaderRef.current?.offsetHeight || stickyHeaderHeight;
-        const targetY = el.getBoundingClientRect().top + window.scrollY - headerOffset;
-        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+        const targetY = el.getBoundingClientRect().top + window.scrollY - headerOffset - 8;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: 'auto' });
         pendingCategoryScrollRef.current = null;
       }
     }, 40);
@@ -964,6 +1002,25 @@ const App: React.FC = () => {
       if (showCheaperOnly) handleShowCheaperOnlyChange(false);
       if (wasEmpty) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+  };
+
+  const handleQuickSearch = (q: string) => {
+    const wasEmpty = searchQuery.trim().length === 0;
+    const isNowNonEmpty = q.trim().length > 0;
+    setSearchQuery(q);
+    setDebouncedSearchQuery(q);
+    setIsSearching(false);
+    if (isNowNonEmpty) {
+      setActiveMarketId(null);
+      setSelectedCategoryFilter(null);
+      setActiveCategoryDropdown(null);
+      setIsMarketSwitcherOpen(false);
+      if (showFavorites) setShowFavorites(false);
+      if (showCheaperOnly) handleShowCheaperOnlyChange(false);
+      if (wasEmpty) {
+        window.scrollTo({ top: 0, behavior: 'auto' });
       }
     }
   };
@@ -1129,7 +1186,7 @@ const App: React.FC = () => {
       const validProducts = prods.filter(p => p.productName && p.newPrice && p.newPrice !== '---');
       if (validProducts.length > 0) {
         // Deterministically pick the first valid product with an image (or fallback to first valid product)
-        const candidate = validProducts.find(p => !!p.customImageUrl) || validProducts[0];
+        const candidate = validProducts.find(p => !!(p.imageUrl || p.customImageUrl)) || validProducts[0];
         list.push({ product: candidate, market: m });
         usedMarkets.add(m.id);
       }
@@ -1274,11 +1331,12 @@ const App: React.FC = () => {
                  const limit = parsePriceNumber(debouncedMaxPrice);
                  if (!isNaN(limit) && priceVal > limit) return;
              }
+             const explicitImg = (p.imageUrl && p.imageUrl.trim()) || (p.customImageUrl && p.customImageUrl.trim()) || undefined;
              if (!groups.has(normalizedName)) {
                  groups.set(normalizedName, {
                      productName: p.productName,
                      category: p.category,
-                     imageUrl: p.customImageUrl,
+                     imageUrl: explicitImg,
                      variants: []
                  });
              }
@@ -1298,7 +1356,7 @@ const App: React.FC = () => {
                      group.variants[existingVariantIndex] = variantData;
                  }
              } else { group.variants.push(variantData); }
-             if (p.customImageUrl && !group.imageUrl) group.imageUrl = p.customImageUrl;
+             if (explicitImg && !group.imageUrl) group.imageUrl = explicitImg;
           });
       });
       const results = Array.from(groups.values()).filter(g => {
@@ -1602,6 +1660,97 @@ const App: React.FC = () => {
     };
   }, [activeMarketId, isLoading, showFavorites]);
 
+  const topCategoryPillsRef = useRef<HTMLDivElement | null>(null);
+  const clickedCategoryRef = useRef<string | null>(null);
+  const [scrolledCategoryInfo, setScrolledCategoryInfo] = useState<{
+    name: string;
+    count: number;
+    colorIdx: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!activeMarketId || showFavorites || showCheaperOnly) {
+      clickedCategoryRef.current = null;
+      setScrolledCategoryInfo(null);
+      return;
+    }
+
+    const clearClickedCategory = () => {
+      clickedCategoryRef.current = null;
+    };
+
+    const updateScrolledCategory = () => {
+      const pillsEl = topCategoryPillsRef.current;
+      const headerEl = stickyHeaderRef.current;
+      if (!pillsEl || !headerEl) {
+        setScrolledCategoryInfo(null);
+        return;
+      }
+
+      const headerBottom = headerEl.getBoundingClientRect().bottom;
+      const pillsBottom = pillsEl.getBoundingClientRect().bottom;
+
+      // Keep category pills strictly single-instance: hide sticky header badge while top pills are still visible
+      if (pillsBottom > headerBottom + 4) {
+        setScrolledCategoryInfo(null);
+        return;
+      }
+
+      const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-category-section="true"]'));
+      if (sections.length === 0) {
+        setScrolledCategoryInfo(null);
+        return;
+      }
+
+      let activeSection = sections[0];
+      for (const sec of sections) {
+        const rect = sec.getBoundingClientRect();
+        if (rect.top <= headerBottom + 24) {
+          activeSection = sec;
+        } else {
+          break;
+        }
+      }
+
+      if (clickedCategoryRef.current) {
+        const clickedSec = sections.find(s => s.dataset.categoryName === clickedCategoryRef.current);
+        if (clickedSec) {
+          const clickedRect = clickedSec.getBoundingClientRect();
+          if (clickedRect.top >= headerBottom - 20 && clickedRect.top < window.innerHeight) {
+            activeSection = clickedSec;
+          }
+        }
+      }
+
+      const catName = activeSection.dataset.categoryName || '';
+      const catCount = Number(activeSection.dataset.categoryCount || '0');
+      const colorIdx = Number(activeSection.dataset.categoryColorIdx || '0');
+
+      if (!catName) {
+        setScrolledCategoryInfo(null);
+        return;
+      }
+
+      setScrolledCategoryInfo(prev =>
+        prev && prev.name === catName && prev.count === catCount && prev.colorIdx === colorIdx
+          ? prev
+          : { name: catName, count: catCount, colorIdx }
+      );
+    };
+
+    updateScrolledCategory();
+    window.addEventListener('scroll', updateScrolledCategory, { passive: true });
+    window.addEventListener('resize', updateScrolledCategory);
+    window.addEventListener('wheel', clearClickedCategory, { passive: true });
+    window.addEventListener('touchstart', clearClickedCategory, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', updateScrolledCategory);
+      window.removeEventListener('resize', updateScrolledCategory);
+      window.removeEventListener('wheel', clearClickedCategory);
+      window.removeEventListener('touchstart', clearClickedCategory);
+    };
+  }, [activeMarketId, showFavorites, showCheaperOnly, visibleDetailCount, activeCatalogByMarket, debouncedSearchQuery, debouncedMaxPrice]);
+
   // Check if any modal is currently open
   const hasOpenModal = Boolean(
     viewProduct ||
@@ -1663,6 +1812,9 @@ const App: React.FC = () => {
 
   // Initialize and listen for popstate (mobile hardware back button / swipe back gesture)
   useEffect(() => {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
     if (!window.history.state || typeof window.history.state.depth !== 'number') {
       window.history.replaceState({ depth: 0 }, '');
       currentDepthRef.current = 0;
@@ -1800,15 +1952,26 @@ const App: React.FC = () => {
                             <h2 className="text-sm sm:text-base md:text-lg font-black text-gray-900 truncate tracking-tight">{activeMarketObj.name}</h2>
                             <ChevronDown className={`w-4 h-4 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${isMarketSwitcherOpen ? 'rotate-180 text-gray-800' : ''}`} />
                             {activeDateStatus.label && (
-                              <span className={`hidden sm:inline-block text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${activeDateStatus.isActive ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                              <span className={`hidden sm:inline-block text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${activeDateStatus.isActive ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>
                                 {activeDateStatus.label}
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] sm:text-xs text-gray-400 font-medium">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-nowrap overflow-hidden">
+                            <span className="text-[10px] sm:text-xs text-gray-400 font-medium shrink-0">
                               {activeMarketFilteredProducts.length} məhsul
                             </span>
+                            {scrolledCategoryInfo && (() => {
+                              const scColor = CATEGORY_TAG_COLORS[scrolledCategoryInfo.colorIdx % CATEGORY_TAG_COLORS.length] || CATEGORY_TAG_COLORS[0];
+                              return (
+                                <span className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-md border text-[10px] sm:text-xs font-extrabold min-w-0 max-w-[165px] sm:max-w-[260px] ${scColor.chip}`}>
+                                  <span className="truncate">{scrolledCategoryInfo.name}</span>
+                                  <span className={`text-[9px] sm:text-[10px] font-black px-1 py-0.5 rounded leading-none shrink-0 ${scColor.count}`}>
+                                    {scrolledCategoryInfo.count}
+                                  </span>
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       </button>
@@ -2154,20 +2317,42 @@ const App: React.FC = () => {
                             </div>
                         )}
                         </div>
-                        {showCheaperOnly ? (
-                            <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4 mt-4 sm:mt-6`}>
-                                {groupedOpportunities.slice(0, visibleProductCount).map((group, idx) => (
-                                    <GroupedProductCard 
-                                      key={`${group.productName}-${idx}`} 
-                                      productName={group.productName} 
-                                      category={group.category} 
-                                      imageUrl={group.imageUrl} 
-                                      variants={group.variants}
-                                      onClick={() => setOpportunityModalIndex(idx)}
-                                    />
+                        {showCheaperOnly ? (() => {
+                            const visibleGroups = groupedOpportunities.slice(0, visibleProductCount);
+                            const colBuckets: Array<Array<{ group: typeof visibleGroups[number]; idx: number }>> = Array.from(
+                              { length: opportunityCols },
+                              () => []
+                            );
+                            const colHeights = new Array(opportunityCols).fill(0);
+                            visibleGroups.forEach((group, idx) => {
+                              let shortestCol = 0;
+                              for (let c = 1; c < opportunityCols; c++) {
+                                if (colHeights[c] < colHeights[shortestCol]) {
+                                  shortestCol = c;
+                                }
+                              }
+                              colBuckets[shortestCol].push({ group, idx });
+                              colHeights[shortestCol] += 220 + group.variants.length * 42;
+                            });
+                            return (
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4 items-start mt-4 sm:mt-6">
+                                {colBuckets.map((colItems, colIdx) => (
+                                  <div key={`opp-col-${colIdx}`} className="flex flex-col gap-2 sm:gap-4 min-w-0">
+                                    {colItems.map(({ group, idx }) => (
+                                      <GroupedProductCard
+                                        key={`${group.productName}-${idx}`}
+                                        productName={group.productName}
+                                        category={group.category}
+                                        imageUrl={group.imageUrl}
+                                        variants={group.variants}
+                                        onClick={() => setOpportunityModalIndex(idx)}
+                                      />
+                                    ))}
+                                  </div>
                                 ))}
-                            </div>
-                        ) : (() => {
+                              </div>
+                            );
+                        })() : (() => {
                             const allSearchModalList = filteredMarketData.flatMap(m => {
                               const mEndDate = m.catalogs?.[0]?.endDate;
                               return m.filteredProducts.map(p => ({
@@ -2252,8 +2437,8 @@ const App: React.FC = () => {
                             {/* Dots Indicator Above the Carousel */}
                             <div className="flex items-center justify-center gap-1.5 py-1 select-none">
                               {sampleFeaturedProducts.map((_, dotIdx) => {
-                                // Visible window is typically 3 products on mobile/tablet
-                                const isVisibleInWindow = dotIdx >= carouselActiveIndex && dotIdx < carouselActiveIndex + 3;
+                                // Visible window is 4 products
+                                const isVisibleInWindow = dotIdx >= carouselActiveIndex && dotIdx < carouselActiveIndex + 4;
                                 return (
                                   <button
                                     key={`carousel-dot-${dotIdx}`}
@@ -2262,7 +2447,10 @@ const App: React.FC = () => {
                                       if (featuredCarouselRef.current) {
                                         const el = featuredCarouselRef.current;
                                         const firstChild = el.firstElementChild as HTMLElement | null;
-                                        const itemWidth = firstChild ? firstChild.offsetWidth + 8 : 150;
+                                        const secondChild = el.children[1] as HTMLElement | undefined;
+                                        const itemWidth = (firstChild && secondChild)
+                                          ? Math.max(1, secondChild.offsetLeft - firstChild.offsetLeft)
+                                          : (firstChild ? firstChild.offsetWidth + 6 : 110);
                                         el.scrollTo({
                                           left: dotIdx * itemWidth,
                                           behavior: 'smooth'
@@ -2294,12 +2482,12 @@ const App: React.FC = () => {
                               <div 
                                 ref={featuredCarouselRef}
                                 onScroll={handleCarouselScroll}
-                                className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-hide scroll-smooth py-1 px-0.5"
+                                className="flex gap-1.5 sm:gap-2.5 overflow-x-auto scrollbar-hide scroll-smooth py-1 px-0.5"
                               >
                                 {sampleFeaturedProducts.map(({ product, market }, idx) => (
                                   <div 
                                     key={`sample-hero-${market.id}-${idx}`}
-                                    className="w-[calc((100%-16px)/3)] min-w-[110px] sm:min-w-[140px] md:min-w-[160px] max-w-[190px] shrink-0"
+                                    className="w-[calc((100%-18px)/4)] sm:w-[calc((100%-30px)/4)] min-w-[78px] sm:min-w-[115px] md:min-w-[130px] max-w-[175px] shrink-0"
                                   >
                                     <ProductCard
                                       product={product}
@@ -2310,7 +2498,7 @@ const App: React.FC = () => {
                                       catalogEndDate={market.catalogs?.[0]?.endDate}
                                       hideCountdown={true}
                                       isAdmin={isAdmin}
-                                      variant="compact"
+                                      variant="mini"
                                       onClick={() => {
                                         if (!isAdmin) {
                                           const mktCatalogs = market.catalogs || [];
@@ -2365,14 +2553,32 @@ const App: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Markets List - Alt alta (vertically stacked) with icon, name, and red product count */}
+                        {/* Markets List - Alt alta (vertically stacked) with icon, name, and green (active) or gray (expired) product count */}
                         <div className="flex flex-col gap-2 sm:gap-2.5">
                           {sortedMarkets.map((market) => {
                             const previewCatalog = market.catalogs && market.catalogs.length > 0 ? market.catalogs[0] : null;
                             const allMarketProducts = (market.catalogs && market.catalogs.length > 0)
                               ? market.catalogs.flatMap(c => c.products || [])
                               : (market.products || []);
-                            const catalogProductsCount = previewCatalog ? (previewCatalog.products?.length || 0) : allMarketProducts.length;
+                            const previewProducts = previewCatalog ? (previewCatalog.products || []) : allMarketProducts;
+                            const catalogProductsCount = previewProducts.length;
+
+                            const catalogLevelCountdown = previewCatalog?.endDate ? calculateDaysLeft(previewCatalog.endDate) : null;
+                            let hasAnyDate = false;
+                            let hasActiveDate = false;
+                            for (const prod of previewProducts) {
+                              const cd = calculateDaysLeft(extractProductEndDate(prod, previewCatalog?.endDate));
+                              if (cd) {
+                                hasAnyDate = true;
+                                if (cd.daysLeft >= 0) {
+                                  hasActiveDate = true;
+                                  break;
+                                }
+                              }
+                            }
+                            const isMarketExpired = hasAnyDate
+                              ? !hasActiveDate
+                              : Boolean(catalogLevelCountdown && catalogLevelCountdown.daysLeft < 0);
 
                             return (
                               <div
@@ -2382,24 +2588,30 @@ const App: React.FC = () => {
                                 tabIndex={0}
                                 className="w-full bg-white hover:bg-gray-50/80 active:bg-gray-100 border border-gray-100 hover:border-gray-200 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 shadow-2xs hover:shadow-xs transition-all flex items-center justify-between cursor-pointer group select-none"
                               >
-                                {/* Left: Market Logo + Market Name + Red Product Count */}
+                                {/* Left: Market Logo + Market Name + Product Count */}
                                 <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
                                   <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white border border-gray-100 shadow-2xs flex items-center justify-center overflow-hidden shrink-0 group-hover:scale-105 transition-transform">
                                     {market.logoUrl ? (
-                                      <img src={market.logoUrl} alt={market.name} className="w-full h-full object-contain p-1" />
+                                      <img src={market.logoUrl} alt={market.name} className={`w-full h-full object-contain p-1 ${isMarketExpired ? 'grayscale-[55%] opacity-85' : ''}`} />
                                     ) : (
-                                      <span className={`text-${market.themeColor || 'green'}-700 font-black text-base sm:text-lg`}>
+                                      <span className={`${isMarketExpired ? 'text-gray-400' : `text-${market.themeColor || 'green'}-700`} font-black text-base sm:text-lg`}>
                                         {market.logoPlaceholder}
                                       </span>
                                     )}
                                   </div>
 
                                   <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-wrap">
-                                    <h3 className="text-sm sm:text-base md:text-lg font-black text-gray-800 group-hover:text-blue-600 transition-colors truncate">
+                                    <h3 className={`text-sm sm:text-base md:text-lg font-black ${isMarketExpired ? 'text-gray-500' : 'text-gray-800'} group-hover:text-blue-600 transition-colors truncate`}>
                                       {market.name}
                                     </h3>
-                                    {/* Red product count right next to market name */}
-                                    <span className="inline-flex items-center text-xs sm:text-sm font-black text-red-600 bg-red-50 border border-red-200/80 px-2 sm:px-2.5 py-0.5 rounded-full shrink-0 shadow-2xs">
+                                    {/* Green product count for active markets, gray for expired */}
+                                    <span
+                                      className={`inline-flex items-center text-xs sm:text-sm font-black px-2 sm:px-2.5 py-0.5 rounded-full shrink-0 shadow-2xs border ${
+                                        isMarketExpired
+                                          ? 'text-gray-500 bg-gray-100 border-gray-200'
+                                          : 'text-emerald-700 bg-emerald-50 border-emerald-200/90'
+                                      }`}
+                                    >
                                       {catalogProductsCount}
                                     </span>
                                   </div>
@@ -2447,6 +2659,10 @@ const App: React.FC = () => {
                           })();
                           const hasCategories = allCategoriesWithCounts.length > 0 && !(allCategoriesWithCounts.length === 1 && allCategoriesWithCounts[0].name.toLowerCase() === 'digər');
 
+                          const categoryColorIndexMap = new Map(
+                            allCategoriesWithCounts.map((c, cIdx) => [c.name, cIdx % CATEGORY_TAG_COLORS.length])
+                          );
+
                           // Build complete ordered market product list (ALL products grouped by category in order)
                           // so the modal counter always reflects TOTAL market products (e.g. 4 / 72) and categories stay contiguous
                           const fullMarketOrderedProducts: DiscountProduct[] = (() => {
@@ -2474,6 +2690,7 @@ const App: React.FC = () => {
                           }));
 
                           const scrollToCategorySection = (categoryName: string) => {
+                            clickedCategoryRef.current = categoryName;
                             const startIdx = fullMarketOrderedProducts.findIndex(
                               p => ((p.category || 'Digər').trim() || 'Digər') === categoryName
                             );
@@ -2490,8 +2707,8 @@ const App: React.FC = () => {
                                 const el = document.getElementById(targetId);
                                 if (el) {
                                   const headerOffset = stickyHeaderRef.current?.offsetHeight || stickyHeaderHeight;
-                                  const targetY = el.getBoundingClientRect().top + window.scrollY - headerOffset;
-                                  window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+                                  const targetY = el.getBoundingClientRect().top + window.scrollY - headerOffset - 8;
+                                  window.scrollTo({ top: Math.max(0, targetY), behavior: 'auto' });
                                 }
                               });
                             }
@@ -2554,104 +2771,42 @@ const App: React.FC = () => {
                               {/* Products Grid for this market */}
                               {displayedProducts.length > 0 ? (
                                 hasCategories ? (
-                                    /* Grouped by Categories View (Sticky category headers across entire section, clicking scrolls to chosen category) */
-                                    <div className="space-y-6 sm:space-y-8 relative">
-                                      {activeCategoryDropdown && (
-                                        <div
-                                          className="fixed inset-0 z-10"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setActiveCategoryDropdown(null);
-                                          }}
-                                        />
-                                      )}
-                                      {groupedProductsByCategory.map((group) => {
-                                        const isThisDropdownOpen = activeCategoryDropdown === group.category;
+                                    /* Grouped by Categories View (Wrapping hashtag chips at top + compact sticky category indicator bar on scroll) */
+                                    <div className="space-y-5 sm:space-y-7 relative">
+                                      {/* Wrapping Category Pills (side-by-side, wraps onto next line, no horizontal scroll) */}
+                                      <div ref={topCategoryPillsRef} className="flex flex-wrap items-center gap-1.5 sm:gap-2 pb-1">
+                                        {allCategoriesWithCounts.map((cat) => {
+                                          const colorIdx = categoryColorIndexMap.get(cat.name) ?? 0;
+                                          const tagColor = CATEGORY_TAG_COLORS[colorIdx];
+                                          return (
+                                            <button
+                                              key={`cat-tag-${cat.name}`}
+                                              type="button"
+                                              onClick={() => scrollToCategorySection(cat.name)}
+                                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] sm:text-xs font-bold transition-all active:scale-95 cursor-pointer ${tagColor.chip}`}
+                                            >
+                                              <span>{cat.name}</span>
+                                              <span className={`text-[10px] font-extrabold px-1.5 py-0.5 leading-none rounded-md ${tagColor.count}`}>
+                                                {cat.count}
+                                              </span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+
+                                      {groupedProductsByCategory.map((group, groupIdx) => {
+                                        const catColorIdx = categoryColorIndexMap.get(group.category) ?? 0;
+                                        const catTotalCount = allCategoriesWithCounts.find(c => c.name === group.category)?.count ?? group.products.length;
                                         return (
                                           <div
                                             key={group.category}
                                             id={`category-section-${mkt.id}-${encodeURIComponent(group.category)}`}
-                                            className="space-y-2.5 sm:space-y-3"
+                                            data-category-section="true"
+                                            data-category-name={group.category}
+                                            data-category-count={catTotalCount}
+                                            data-category-color-idx={catColorIdx}
+                                            className={`space-y-2.5 sm:space-y-3 ${groupIdx > 0 ? 'pt-3 border-t border-gray-100' : ''}`}
                                           >
-                                            {/* Category Header (Direct child so position:sticky holds throughout the entire category) */}
-                                            <div 
-                                              style={{ top: `${stickyHeaderHeight}px` }}
-                                              onClick={() => setActiveCategoryDropdown(prev => prev === group.category ? null : group.category)}
-                                              role="button"
-                                              tabIndex={0}
-                                              title="Bütün kateqoriyaları gör və seç"
-                                              className={`sticky ${isThisDropdownOpen ? 'z-30' : 'z-20'} bg-white/95 backdrop-blur-md -mx-2 sm:-mx-4 px-2 sm:px-4 py-2 sm:py-2.5 border-b border-gray-100 flex items-center justify-center shadow-2xs transition-[top] duration-150 cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none group`}
-                                            >
-                                              <div className="flex items-center justify-center gap-2 min-w-0 max-w-[85%] text-center">
-                                                <div className={`w-2.5 sm:w-3 h-7 sm:h-8 rounded-full bg-${mktAccent}-600 shrink-0 group-hover:scale-y-110 transition-transform`}></div>
-                                                <h3 className="font-black text-lg sm:text-2xl text-gray-900 tracking-tight truncate flex items-center gap-2">
-                                                  <span>{group.category}</span>
-                                                  <ChevronDown className={`w-5 h-5 sm:w-6 sm:h-6 text-gray-400 group-hover:text-gray-700 transition-transform duration-200 ${isThisDropdownOpen ? 'rotate-180 text-gray-800' : ''}`} />
-                                                </h3>
-                                              </div>
-
-                                              {/* Simple vertical list of category names right underneath the sticky header */}
-                                              {isThisDropdownOpen && (
-                                                <div
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  className="absolute left-2 sm:left-4 top-full mt-1 w-full max-w-xs sm:max-w-sm bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-40 max-h-72 overflow-y-auto animate-[fadeIn_0.15s_ease-out] text-left"
-                                                >
-                                                  <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                                                    <span>Kateqoriyalar</span>
-                                                    <button 
-                                                      type="button"
-                                                      onClick={(e) => { e.stopPropagation(); setActiveCategoryDropdown(null); }}
-                                                      className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
-                                                    >
-                                                      <X className="w-3.5 h-3.5" />
-                                                    </button>
-                                                  </div>
-                                                  
-                                                  {/* Scroll to Top Option */}
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      setSelectedCategoryFilter(null);
-                                                      setActiveCategoryDropdown(null);
-                                                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                    }}
-                                                    className="w-full text-left px-3.5 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center justify-between transition-colors cursor-pointer border-b border-gray-50"
-                                                  >
-                                                    <span className="font-bold text-blue-600">Bütün kateqoriyalar (Ən başa)</span>
-                                                    <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-                                                      {mktFilteredProducts.length}
-                                                    </span>
-                                                  </button>
-
-                                                  {/* Individual categories alt alta — scrolls to selected category while keeping all categories visible */}
-                                                  {allCategoriesWithCounts.map(cat => {
-                                                    const isCurrent = group.category === cat.name;
-                                                    return (
-                                                      <button
-                                                        key={cat.name}
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          setActiveCategoryDropdown(null);
-                                                          scrollToCategorySection(cat.name);
-                                                        }}
-                                                        className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
-                                                          isCurrent 
-                                                            ? 'bg-gray-100 font-bold text-gray-900' 
-                                                            : 'text-gray-700 hover:bg-gray-50'
-                                                        }`}
-                                                      >
-                                                        <span className="truncate">{cat.name}</span>
-                                                        <span className="text-[10px] text-gray-500 bg-gray-100 font-semibold px-2 py-0.5 rounded-full ml-2 shrink-0">
-                                                          {cat.count}
-                                                        </span>
-                                                      </button>
-                                                    );
-                                                  })}
-                                                </div>
-                                              )}
-                                            </div>
 
                                             <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
                                               {group.products.map(({ product, originalIndex }) => (
@@ -2771,6 +2926,7 @@ const App: React.FC = () => {
         <BottomSearchDock 
           searchQuery={searchQuery}
           onSearchChange={handleSearchQueryChange}
+          onQuickSearch={handleQuickSearch}
           maxPrice={maxPrice}
           onMaxPriceChange={(p) => { setMaxPrice(p); setIsSearching(true); }}
           showCheaperOnly={showCheaperOnly}

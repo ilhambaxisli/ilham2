@@ -15,12 +15,15 @@ const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, pr
 
   useEffect(() => {
     if (product) {
+      const initialImageUrl = product.imageUrl || product.customImageUrl || '';
       setFormData({
         ...product,
         productName: String(product.productName || ''),
         oldPrice: product.oldPrice !== undefined && product.oldPrice !== null ? String(product.oldPrice) : '',
         newPrice: product.newPrice !== undefined && product.newPrice !== null ? String(product.newPrice) : '',
         discountPercentage: product.discountPercentage !== undefined && product.discountPercentage !== null ? String(product.discountPercentage) : '',
+        imageUrl: initialImageUrl,
+        customImageUrl: initialImageUrl,
         expiryDate: product.expiryDate || (product as any).bitis || (product as any).endDate || '',
       });
     }
@@ -30,8 +33,11 @@ const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, pr
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedImg = (formData.imageUrl ?? formData.customImageUrl ?? '').trim();
     onSave({
       ...formData,
+      imageUrl: trimmedImg || undefined,
+      customImageUrl: trimmedImg || undefined,
       bitis: formData.expiryDate || (formData as any).bitis || undefined,
     });
     onClose();
@@ -130,8 +136,8 @@ const EditProductModal: React.FC<EditProductModalProps> = ({ isOpen, onClose, pr
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Xüsusi Şəkil URL</label>
                 <input
                   type="text"
-                  value={formData.customImageUrl || ''}
-                  onChange={(e) => setFormData({ ...formData, customImageUrl: e.target.value })}
+                  value={formData.imageUrl ?? formData.customImageUrl ?? ''}
+                  onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value, customImageUrl: e.target.value })}
                   className="block w-full border border-gray-300 rounded-xl shadow-sm py-2.5 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   placeholder="https://..."
                 />

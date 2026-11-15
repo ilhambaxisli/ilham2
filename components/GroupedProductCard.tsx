@@ -49,15 +49,15 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
   onClick
 }) => {
   const [imageError, setImageError] = useState(false);
+  const [useFallbackBing, setUseFallbackBing] = useState(false);
 
   // Find min price to highlight
   const minPrice = Math.min(...variants.map(v => v.price));
   const sortedVariants = [...variants].sort((a, b) => a.price - b.price);
 
-  // Use the image or fallback
-  const finalImageUrl = imageUrl 
-    ? imageUrl 
-    : `https://tse2.mm.bing.net/th?q=${encodeURIComponent(productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
+  const autoBingUrl = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
+  const trimmedExplicit = imageUrl?.trim();
+  const finalImageUrl = (trimmedExplicit && !useFallbackBing) ? trimmedExplicit : autoBingUrl;
 
   // Calculate potential saving
   const maxPrice = Math.max(...variants.map(v => v.price));
@@ -66,7 +66,7 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
   return (
     <div 
       onClick={onClick}
-      className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg border border-gray-100 transition-all duration-300 flex flex-col h-full group relative cursor-pointer"
+      className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg border border-gray-100 transition-all duration-300 flex flex-col group relative cursor-pointer"
     >
       {/* Saving Badge */}
       {saving > 0 && (
@@ -82,7 +82,13 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
             src={finalImageUrl} 
             alt={productName}
             className="w-full h-full object-contain p-3 sm:p-4 group-hover:scale-105 transition-transform duration-500"
-            onError={() => setImageError(true)}
+            onError={() => {
+              if (trimmedExplicit && !useFallbackBing) {
+                setUseFallbackBing(true);
+              } else {
+                setImageError(true);
+              }
+            }}
             loading="lazy"
           />
         ) : (
@@ -92,13 +98,13 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
         )}
       </div>
 
-      <div className="p-2.5 sm:p-3.5 flex-1 flex flex-col">
-        <h3 className="font-bold text-gray-800 leading-tight mb-2 line-clamp-2 text-xs sm:text-sm h-8 sm:h-9" title={productName}>
+      <div className="p-2.5 sm:p-3.5 flex flex-col">
+        <h3 className="font-bold text-gray-800 leading-tight mb-2 line-clamp-2 text-xs sm:text-sm" title={productName}>
             {productName}
         </h3>
 
         {/* Market List */}
-        <div className="space-y-1.5 sm:space-y-2 mt-auto">
+        <div className="space-y-1.5 sm:space-y-2">
             {sortedVariants.map((variant, idx) => {
                 const isCheapest = variant.price === minPrice;
                 const displayName = variant.marketName.replace(/\s+Market$/i, '') || variant.marketName;

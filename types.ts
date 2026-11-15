@@ -18,6 +18,7 @@ export interface DiscountProduct {
   newPrice: string;
   discountPercentage: string;
   category: ProductCategory;
+  imageUrl?: string;
   customImageUrl?: string;
   expiryDate?: string; // Product-specific expiration date
   bitis?: string; // Supabase product end date field
