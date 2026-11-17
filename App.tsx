@@ -43,10 +43,22 @@ const INITIAL_MARKETS: MarketData[] = [
     logoPlaceholder: 'A',
     logoUrl: 'https://b7x9kq.arazmarket.az/storage/news/dsc_9152.jpg',
     instagramPosts: []
+  },
+  {
+    id: 'omid',
+    name: 'Omid',
+    lastUpdated: new Date().toISOString(),
+    products: [],
+    catalogs: [],
+    url: 'https://omid.az',
+    themeColor: 'indigo',
+    logoPlaceholder: 'O',
+    logoUrl: 'https://omid.az/cdn/shop/files/logo-square-bg_b02cc3d7-332a-4af5-af81-cbe0f6b16235.png?v=1742375886',
+    instagramPosts: []
   }
 ];
 
-// Target order: OBA, araz, bravo, al market, tamstore, bazarstore, rahat, neptun, bolmart
+// Target order: OBA, araz, bravo, al market, tamstore, bazarstore, rahat, neptun, bolmart, ..., omid
 const getMarketSortRank = (market: MarketData): number => {
   const id = (market.id || '').toLowerCase().trim();
   const name = (market.name || '').toLowerCase().trim();
@@ -77,6 +89,9 @@ const getMarketSortRank = (market: MarketData): number => {
 
   // 9. bolmart
   if (id === 'bolmart' || name.includes('bolmart') || name.includes('bol mart')) return 9;
+
+  // Last: omid
+  if (id === 'omid' || name === 'omid' || name.includes('omid')) return 9999;
 
   return 999;
 };
@@ -674,6 +689,9 @@ const migrateMarketData = (incomingMarkets: MarketData[]): MarketData[] => {
     if (m.name.toLowerCase().includes('rahat')) {
       overrideLogoUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRTsEY6AAE18u9Y57PHT9fxiujtBzAMxNFVtZl7TgONVA&s=10';
     }
+    if (m.id === 'omid' || m.name.toLowerCase().includes('omid')) {
+      overrideLogoUrl = overrideLogoUrl || 'https://omid.az/cdn/shop/files/logo-square-bg_b02cc3d7-332a-4af5-af81-cbe0f6b16235.png?v=1742375886';
+    }
     
     const normProducts = (m.products || []).map(normalizeMarketProduct);
     let updatedMarket: MarketData = { 
@@ -717,6 +735,22 @@ const migrateMarketData = (incomingMarkets: MarketData[]): MarketData[] => {
     }
     return updatedMarket;
   });
+
+  const hasOmid = migrated.some(m => m.id === 'omid' || (m.name || '').toLowerCase().includes('omid'));
+  if (!hasOmid) {
+    migrated.push({
+      id: 'omid',
+      name: 'Omid',
+      lastUpdated: new Date().toISOString(),
+      products: [],
+      catalogs: [],
+      url: 'https://omid.az',
+      themeColor: 'indigo',
+      logoPlaceholder: 'O',
+      logoUrl: 'https://omid.az/cdn/shop/files/logo-square-bg_b02cc3d7-332a-4af5-af81-cbe0f6b16235.png?v=1742375886',
+      instagramPosts: []
+    });
+  }
 
   return sortMarketsByOrder(migrated);
 };
@@ -800,7 +834,7 @@ const App: React.FC = () => {
       const secondChild = el.children[1] as HTMLElement | undefined;
       const itemWidth = (firstChild && secondChild)
         ? Math.max(1, secondChild.offsetLeft - firstChild.offsetLeft)
-        : (firstChild ? firstChild.offsetWidth + 6 : 110);
+        : (firstChild ? firstChild.offsetWidth + 8 : 110);
       const index = Math.round(scrollLeft / itemWidth);
       setCarouselActiveIndex(Math.max(0, index));
     }
@@ -1274,14 +1308,20 @@ const App: React.FC = () => {
   const productPriceIndex = useMemo(() => {
     const index = new Map<string, { price: number; marketId: string }[]>();
     markets.forEach(m => {
-        const prods = m.catalogs ? m.catalogs.flatMap(c => c.products) : (m.products || []);
-        prods.forEach(p => {
-            const name = (p.productName || '').trim().toLowerCase();
-            const price = parsePriceNumber(p.newPrice);
-            if (!isNaN(price) && name) {
-                if (!index.has(name)) index.set(name, []);
-                index.get(name)!.push({ price, marketId: m.id });
-            }
+        const catalogs = m.catalogs && m.catalogs.length > 0
+          ? m.catalogs
+          : [{ endDate: undefined, products: m.products || [] }];
+        catalogs.forEach(cat => {
+            (cat.products || []).forEach(p => {
+                const cd = calculateDaysLeft(extractProductEndDate(p, cat.endDate));
+                if (cd && cd.daysLeft < 0) return;
+                const name = (p.productName || '').trim().toLowerCase();
+                const price = parsePriceNumber(p.newPrice);
+                if (!isNaN(price) && name) {
+                    if (!index.has(name)) index.set(name, []);
+                    index.get(name)!.push({ price, marketId: m.id });
+                }
+            });
         });
     });
     return index;
@@ -1316,47 +1356,53 @@ const App: React.FC = () => {
           }>
       }>();
       markets.forEach(market => {
-          const allProds = market.catalogs ? market.catalogs.flatMap(c => c.products) : (market.products || []);
-          allProds.forEach(p => {
-             if (debouncedSearchQuery.length > 0) {
-               const pNorm = normalizeTextForSearch(p.productName || '');
-               const qNorm = normalizeTextForSearch(debouncedSearchQuery);
-               if (!pNorm.includes(qNorm)) return;
-             }
-             const normalizedName = (p.productName || '').trim().toLowerCase();
-             if (!normalizedName) return;
-             const priceVal = parsePriceNumber(p.newPrice);
-             if (isNaN(priceVal)) return;
-             if (debouncedMaxPrice) {
-                 const limit = parsePriceNumber(debouncedMaxPrice);
-                 if (!isNaN(limit) && priceVal > limit) return;
-             }
-             const explicitImg = (p.imageUrl && p.imageUrl.trim()) || (p.customImageUrl && p.customImageUrl.trim()) || undefined;
-             if (!groups.has(normalizedName)) {
-                 groups.set(normalizedName, {
-                     productName: p.productName,
-                     category: p.category,
-                     imageUrl: explicitImg,
-                     variants: []
-                 });
-             }
-             const group = groups.get(normalizedName)!;
-             const existingVariantIndex = group.variants.findIndex(v => v.marketId === market.id);
-             const variantData = {
-                 marketId: market.id,
-                 marketName: market.name,
-                 price: priceVal,
-                 originalPriceStr: String(p.newPrice ?? ''),
-                 logoUrl: market.logoUrl,
-                 logoPlaceholder: market.logoPlaceholder,
-                 themeColor: market.themeColor
-             };
-             if (existingVariantIndex !== -1) {
-                 if (priceVal < group.variants[existingVariantIndex].price) {
-                     group.variants[existingVariantIndex] = variantData;
+          const catalogs = market.catalogs && market.catalogs.length > 0
+            ? market.catalogs
+            : [{ endDate: undefined, products: market.products || [] }];
+          catalogs.forEach(cat => {
+              (cat.products || []).forEach(p => {
+                 const cd = calculateDaysLeft(extractProductEndDate(p, cat.endDate));
+                 if (cd && cd.daysLeft < 0) return;
+                 if (debouncedSearchQuery.length > 0) {
+                   const pNorm = normalizeTextForSearch(p.productName || '');
+                   const qNorm = normalizeTextForSearch(debouncedSearchQuery);
+                   if (!pNorm.includes(qNorm)) return;
                  }
-             } else { group.variants.push(variantData); }
-             if (explicitImg && !group.imageUrl) group.imageUrl = explicitImg;
+                 const normalizedName = (p.productName || '').trim().toLowerCase();
+                 if (!normalizedName) return;
+                 const priceVal = parsePriceNumber(p.newPrice);
+                 if (isNaN(priceVal)) return;
+                 if (debouncedMaxPrice) {
+                     const limit = parsePriceNumber(debouncedMaxPrice);
+                     if (!isNaN(limit) && priceVal > limit) return;
+                 }
+                 const explicitImg = (p.imageUrl && p.imageUrl.trim()) || (p.customImageUrl && p.customImageUrl.trim()) || undefined;
+                 if (!groups.has(normalizedName)) {
+                     groups.set(normalizedName, {
+                         productName: p.productName,
+                         category: p.category,
+                         imageUrl: explicitImg,
+                         variants: []
+                     });
+                 }
+                 const group = groups.get(normalizedName)!;
+                 const existingVariantIndex = group.variants.findIndex(v => v.marketId === market.id);
+                 const variantData = {
+                     marketId: market.id,
+                     marketName: market.name,
+                     price: priceVal,
+                     originalPriceStr: String(p.newPrice ?? ''),
+                     logoUrl: market.logoUrl,
+                     logoPlaceholder: market.logoPlaceholder,
+                     themeColor: market.themeColor
+                 };
+                 if (existingVariantIndex !== -1) {
+                     if (priceVal < group.variants[existingVariantIndex].price) {
+                         group.variants[existingVariantIndex] = variantData;
+                     }
+                 } else { group.variants.push(variantData); }
+                 if (explicitImg && !group.imageUrl) group.imageUrl = explicitImg;
+              });
           });
       });
       const results = Array.from(groups.values()).filter(g => {
@@ -2437,8 +2483,8 @@ const App: React.FC = () => {
                             {/* Dots Indicator Above the Carousel */}
                             <div className="flex items-center justify-center gap-1.5 py-1 select-none">
                               {sampleFeaturedProducts.map((_, dotIdx) => {
-                                // Visible window is 4 products
-                                const isVisibleInWindow = dotIdx >= carouselActiveIndex && dotIdx < carouselActiveIndex + 4;
+                                // Visible window is 3 full products (+ 1 peeking)
+                                const isVisibleInWindow = dotIdx >= carouselActiveIndex && dotIdx < carouselActiveIndex + 3;
                                 return (
                                   <button
                                     key={`carousel-dot-${dotIdx}`}
@@ -2450,7 +2496,7 @@ const App: React.FC = () => {
                                         const secondChild = el.children[1] as HTMLElement | undefined;
                                         const itemWidth = (firstChild && secondChild)
                                           ? Math.max(1, secondChild.offsetLeft - firstChild.offsetLeft)
-                                          : (firstChild ? firstChild.offsetWidth + 6 : 110);
+                                          : (firstChild ? firstChild.offsetWidth + 8 : 110);
                                         el.scrollTo({
                                           left: dotIdx * itemWidth,
                                           behavior: 'smooth'
@@ -2482,12 +2528,12 @@ const App: React.FC = () => {
                               <div 
                                 ref={featuredCarouselRef}
                                 onScroll={handleCarouselScroll}
-                                className="flex gap-1.5 sm:gap-2.5 overflow-x-auto scrollbar-hide scroll-smooth py-1 px-0.5"
+                                className="flex gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide scroll-smooth py-1 px-0.5"
                               >
                                 {sampleFeaturedProducts.map(({ product, market }, idx) => (
                                   <div 
                                     key={`sample-hero-${market.id}-${idx}`}
-                                    className="w-[calc((100%-18px)/4)] sm:w-[calc((100%-30px)/4)] min-w-[78px] sm:min-w-[115px] md:min-w-[130px] max-w-[175px] shrink-0"
+                                    className="w-[calc((100%-24px)/3.5)] sm:w-[calc((100%-30px)/3.5)] min-w-[82px] sm:min-w-[130px] md:min-w-[145px] shrink-0"
                                   >
                                     <ProductCard
                                       product={product}
@@ -2796,6 +2842,7 @@ const App: React.FC = () => {
 
                                       {groupedProductsByCategory.map((group, groupIdx) => {
                                         const catColorIdx = categoryColorIndexMap.get(group.category) ?? 0;
+                                        const tagColor = CATEGORY_TAG_COLORS[catColorIdx] || CATEGORY_TAG_COLORS[0];
                                         const catTotalCount = allCategoriesWithCounts.find(c => c.name === group.category)?.count ?? group.products.length;
                                         return (
                                           <div
@@ -2805,8 +2852,18 @@ const App: React.FC = () => {
                                             data-category-name={group.category}
                                             data-category-count={catTotalCount}
                                             data-category-color-idx={catColorIdx}
-                                            className={`space-y-2.5 sm:space-y-3 ${groupIdx > 0 ? 'pt-3 border-t border-gray-100' : ''}`}
+                                            className={`space-y-2.5 sm:space-y-3 ${groupIdx > 0 ? 'pt-3.5 border-t border-gray-100' : ''}`}
                                           >
+                                            {groupIdx > 0 && (
+                                              <div className="flex items-center justify-start">
+                                                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs sm:text-sm font-extrabold shadow-2xs select-none ${tagColor.chip}`}>
+                                                  <span>{group.category}</span>
+                                                  <span className={`text-[10px] sm:text-xs font-black px-1.5 py-0.5 leading-none rounded-md ${tagColor.count}`}>
+                                                    {catTotalCount}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
 
                                             <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
                                               {group.products.map(({ product, originalIndex }) => (

@@ -549,7 +549,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
 
                   {/* Bottom-Right Quantity Badge */}
                   {quantityBadge && (
-                    <div className="absolute bottom-2.5 right-2.5 bg-black/75 backdrop-blur-xs text-white px-2.5 py-1 rounded-lg text-xs font-black shadow-md tracking-tight">
+                    <div className="absolute bottom-2.5 right-2.5 bg-black text-white px-3 py-1.5 rounded-lg text-sm sm:text-base font-black shadow-lg tracking-tight leading-none">
                       {quantityBadge}
                     </div>
                   )}
