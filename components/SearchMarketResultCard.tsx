@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import { DiscountProduct, MarketData } from '../types';
 import ProductCard from './ProductCard';
 
@@ -16,6 +16,7 @@ interface SearchMarketResultCardProps {
   onToggleFavorite: (product: DiscountProduct, marketId: string) => void;
   onProductClick: (product: DiscountProduct) => void;
   onEditProduct: (product: DiscountProduct) => void;
+  onSelectMarket?: () => void;
 }
 
 const SearchMarketResultCard: React.FC<SearchMarketResultCardProps> = ({
@@ -31,11 +32,12 @@ const SearchMarketResultCard: React.FC<SearchMarketResultCardProps> = ({
   onToggleFavorite,
   onProductClick,
   onEditProduct,
+  onSelectMarket,
 }) => {
   const marketEndDate = market.catalogs?.[0]?.endDate;
-  const hasMoreThanThree = filteredProducts.length > 3;
-  const topThreeProducts = filteredProducts.slice(0, 3);
-  const extraProducts = filteredProducts.slice(3);
+  const hasMoreThanSix = filteredProducts.length > 6;
+  const topSixProducts = filteredProducts.slice(0, 6);
+  const extraProducts = filteredProducts.slice(6);
 
   const [renderExtra, setRenderExtra] = useState<boolean>(isExpanded);
   const [isAnimatingCollapse, setIsAnimatingCollapse] = useState<boolean>(false);
@@ -184,8 +186,8 @@ const SearchMarketResultCard: React.FC<SearchMarketResultCardProps> = ({
   };
 
   const gridClassName = productViewMode === 'grid'
-    ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-4'
-    : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4';
+    ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4'
+    : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4';
 
   const renderCardItem = (product: DiscountProduct, keyIdx: number) => {
     const fav = isFavorite(product.productName || '', market.id);
@@ -212,14 +214,19 @@ const SearchMarketResultCard: React.FC<SearchMarketResultCardProps> = ({
     <div
       ref={cardRef}
       id={`search-market-card-${market.id}`}
-      className="bg-white rounded-2xl p-2 sm:p-5 border border-gray-100 shadow-xs mb-5"
+      className="bg-white rounded-2xl -mx-1.5 px-1.5 py-2 sm:mx-0 sm:p-4 border border-gray-100 shadow-xs mb-5"
     >
       {/* Sticky Market Header in search results */}
       <div
         style={{ top: `${stickyHeaderHeight}px` }}
-        className="sticky z-20 bg-white/95 backdrop-blur-md -mx-2 sm:-mx-5 px-3 sm:px-5 py-2.5 mb-4 border-b border-gray-100 flex items-center justify-between shadow-2xs transition-[top] duration-150 rounded-t-2xl"
+        className="sticky z-20 bg-white/95 backdrop-blur-md -mx-1.5 sm:-mx-4 px-2.5 sm:px-4 py-2.5 mb-3.5 sm:mb-4 border-b border-gray-100 flex items-center justify-between gap-2 shadow-2xs transition-[top] duration-150 rounded-t-2xl"
       >
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <button
+          type="button"
+          onClick={onSelectMarket}
+          title={`${market.name} məhsul siyahısına keç`}
+          className="flex items-center gap-2.5 sm:gap-3 min-w-0 text-left rounded-xl px-1.5 py-1 -mx-1.5 -my-1 hover:bg-gray-50 active:scale-[0.99] transition-all cursor-pointer group"
+        >
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
             {market.logoUrl ? (
               <img src={market.logoUrl} alt={market.name} className="w-full h-full object-contain p-1" />
@@ -228,37 +235,40 @@ const SearchMarketResultCard: React.FC<SearchMarketResultCardProps> = ({
             )}
           </div>
           <div className="min-w-0">
-            <h3 className="text-base sm:text-lg font-bold text-gray-900 truncate tracking-tight">{market.name}</h3>
+            <div className="flex items-center gap-1 min-w-0">
+              <h3 className="text-base sm:text-lg font-bold text-gray-900 group-hover:text-emerald-700 truncate tracking-tight transition-colors">{market.name}</h3>
+              <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+            </div>
             <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Axtarış üzrə market nəticələri</p>
           </div>
-        </div>
+        </button>
         <span className="text-xs sm:text-sm font-bold bg-gray-100 text-gray-600 px-2.5 sm:px-3 py-1 rounded-full shrink-0">
           {filteredProducts.length} məhsul
         </span>
       </div>
 
-      {/* First 3 Sample Products */}
+      {/* First 6 Sample Products */}
       <div className={gridClassName}>
-        {topThreeProducts.map((product, index) => renderCardItem(product, index))}
+        {topSixProducts.map((product, index) => renderCardItem(product, index))}
       </div>
 
-      {/* Collapsible Extra Products (Items 4+) */}
-      {hasMoreThanThree && renderExtra && (
+      {/* Collapsible Extra Products (Items 7+) */}
+      {hasMoreThanSix && renderExtra && (
         <div
           ref={extraWrapperRef}
           className="overflow-hidden flex flex-col justify-end will-change-[height,opacity]"
         >
           <div
             ref={extraInnerRef}
-            className={`${gridClassName} pt-1.5 sm:pt-4 will-change-transform`}
+            className={`${gridClassName} pt-1.5 sm:pt-3.5 md:pt-4 will-change-transform`}
           >
-            {extraProducts.map((product, index) => renderCardItem(product, index + 3))}
+            {extraProducts.map((product, index) => renderCardItem(product, index + 6))}
           </div>
         </div>
       )}
 
-      {/* Expand / Collapse Button (only shown when > 3 matching products) */}
-      {hasMoreThanThree && (
+      {/* Expand / Collapse Button (only shown when > 6 matching products) */}
+      {hasMoreThanSix && (
         <div className="mt-3 pt-2.5 border-t border-gray-100 flex justify-center">
           <button
             type="button"

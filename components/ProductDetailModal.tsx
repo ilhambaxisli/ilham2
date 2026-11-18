@@ -504,7 +504,7 @@ const LeftProductRail: React.FC<LeftProductRailProps> = ({
       onWheel={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
       onTouchMove={(e) => e.stopPropagation()}
-      className="w-[70px] sm:w-[78px] h-full shrink-0 border-r border-gray-100 bg-gray-50/75 overflow-y-auto overscroll-y-contain scrollbar-hide py-1.5 px-1 flex flex-col gap-1.5 touch-pan-y"
+      className="relative w-[70px] sm:w-[78px] h-full shrink-0 border-r border-gray-100 bg-gray-50/75 overflow-y-auto overscroll-y-contain scrollbar-hide py-1.5 px-1 flex flex-col gap-1.5 touch-pan-y"
     >
       {items.map((railItem, targetIdx) => {
         const railProd = railItem.product;
@@ -610,7 +610,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTouchTimeRef = useRef<number>(0);
   const burstTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const smoothScrollRafRef = useRef<number | null>(null);
+  const isNativeSmoothScrollRef = useRef<boolean>(false);
+  const nativeScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDirectJumpRef = useRef<number | null>(null);
   const animTargetIdxRef = useRef<number>(clampedPropIdx);
 
@@ -732,16 +733,19 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   useEffect(() => {
     return () => {
       burstTimersRef.current.forEach(clearTimeout);
-      if (smoothScrollRafRef.current !== null) {
-        cancelAnimationFrame(smoothScrollRafRef.current);
+      if (nativeScrollTimerRef.current !== null) {
+        clearTimeout(nativeScrollTimerRef.current);
       }
     };
   }, []);
 
-  const cancelSmoothScroll = useCallback(() => {
-    if (smoothScrollRafRef.current !== null) {
-      cancelAnimationFrame(smoothScrollRafRef.current);
-      smoothScrollRafRef.current = null;
+  const finishNativeSmoothScroll = useCallback(() => {
+    if (nativeScrollTimerRef.current !== null) {
+      clearTimeout(nativeScrollTimerRef.current);
+      nativeScrollTimerRef.current = null;
+    }
+    if (isNativeSmoothScrollRef.current) {
+      isNativeSmoothScrollRef.current = false;
       setJumpTargetIdx(null);
       const el = scrollerRef.current;
       if (el) {
@@ -749,6 +753,23 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       }
     }
   }, []);
+
+  const cancelSmoothScroll = useCallback(() => {
+    finishNativeSmoothScroll();
+  }, [finishNativeSmoothScroll]);
+
+  // Listen for native scrollend to restore CSS scroll-snap immediately when smooth scroll finishes
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onScrollEnd = () => {
+      if (isNativeSmoothScrollRef.current) {
+        finishNativeSmoothScroll();
+      }
+    };
+    el.addEventListener('scrollend', onScrollEnd);
+    return () => el.removeEventListener('scrollend', onScrollEnd);
+  }, [finishNativeSmoothScroll]);
 
   const markUserInteraction = useCallback(() => {
     userInteractedRef.current = true;
@@ -793,7 +814,14 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const scrollToIndex = useCallback((targetIdx: number) => {
     const el = scrollerRef.current;
     if (!el) return;
-    markUserInteraction();
+    userInteractedRef.current = true;
+    isProgrammaticScrollRef.current = false;
+    pendingDirectJumpRef.current = null;
+    if (nativeScrollTimerRef.current !== null) {
+      clearTimeout(nativeScrollTimerRef.current);
+      nativeScrollTimerRef.current = null;
+    }
+
     const clamped = Math.max(0, Math.min(items.length - 1, targetIdx));
     animTargetIdxRef.current = clamped;
     const targetSlide = el.children[clamped] as HTMLElement | undefined;
@@ -801,60 +829,29 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       ? targetSlide.offsetTop
       : clamped * el.clientHeight;
 
-    const startTop = el.scrollTop;
-    const distance = targetTop - startTop;
-    if (Math.abs(distance) < 2) {
+    if (Math.abs(targetTop - el.scrollTop) < 2) {
       el.scrollTop = targetTop;
+      finishNativeSmoothScroll();
       return;
     }
 
-    // Pre-render target slide immediately so even long glides render with zero blank flash
-    setJumpTargetIdx(clamped);
+    // Only pre-render distant targets outside the +/-4 mounted window so adjacent clicks stay zero-re-render
+    if (Math.abs(clamped - activeIdxRef.current) > 4) {
+      setJumpTargetIdx(clamped);
+    }
+
+    isNativeSmoothScrollRef.current = true;
     el.style.scrollSnapType = 'none';
-    const stepDistance = Math.abs(clamped - activeIdxRef.current);
-    const duration = Math.min(480, Math.max(320, 300 + stepDistance * 30));
-    const startTime = performance.now();
+    void el.scrollTop;
+    el.scrollTo({ top: targetTop, behavior: 'smooth' });
 
-    const step = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(1, elapsed / duration);
-      // Smooth easeInOutCubic curve so up/down clicks glide fluidly instead of jumping
-      const eased = progress < 0.5
-        ? 4 * progress * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-      el.scrollTop = startTop + distance * eased;
-
-      if (el.clientHeight > 0) {
-        const currentStepIdx = Math.max(0, Math.min(items.length - 1, Math.round(el.scrollTop / el.clientHeight)));
-        if (currentStepIdx !== activeIdxRef.current) {
-          activeIdxRef.current = currentStepIdx;
-          setActiveIdx(currentStepIdx);
-        }
-      }
-
-      if (progress < 1) {
-        smoothScrollRafRef.current = requestAnimationFrame(step);
-      } else {
-        smoothScrollRafRef.current = null;
-        el.scrollTop = targetTop;
-        el.style.scrollSnapType = '';
-        setJumpTargetIdx(null);
-        if (activeIdxRef.current !== clamped) {
-          activeIdxRef.current = clamped;
-          setActiveIdx(clamped);
-        }
-        setIsMarketDropdownOpen(false);
-        onSelectIndex?.(clamped);
-      }
-    };
-
-    smoothScrollRafRef.current = requestAnimationFrame(step);
-  }, [items.length, markUserInteraction, onSelectIndex]);
+    nativeScrollTimerRef.current = setTimeout(finishNativeSmoothScroll, 450);
+  }, [items.length, finishNativeSmoothScroll]);
 
   const stepByDelta = useCallback((delta: number) => {
-    const baseIdx = smoothScrollRafRef.current !== null ? animTargetIdxRef.current : activeIdxRef.current;
+    const baseIdx = isNativeSmoothScrollRef.current ? animTargetIdxRef.current : activeIdxRef.current;
     const nextIdx = Math.max(0, Math.min(items.length - 1, baseIdx + delta));
-    if (nextIdx !== baseIdx || smoothScrollRafRef.current === null) {
+    if (nextIdx !== baseIdx || !isNativeSmoothScrollRef.current) {
       scrollToIndex(nextIdx);
     }
   }, [items.length, scrollToIndex]);
@@ -862,9 +859,15 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const handleScroll = () => {
     const el = scrollerRef.current;
     if (!el || el.clientHeight === 0 || items.length === 0) return;
-    if (smoothScrollRafRef.current !== null || pendingDirectJumpRef.current !== null) return;
+    if (pendingDirectJumpRef.current !== null) return;
     if (isProgrammaticScrollRef.current && !userInteractedRef.current) {
       return;
+    }
+    if (isNativeSmoothScrollRef.current) {
+      if (nativeScrollTimerRef.current !== null) {
+        clearTimeout(nativeScrollTimerRef.current);
+      }
+      nativeScrollTimerRef.current = setTimeout(finishNativeSmoothScroll, 140);
     }
     const newIdx = Math.max(0, Math.min(items.length - 1, Math.round(el.scrollTop / el.clientHeight)));
     if (newIdx !== activeIdxRef.current) {
@@ -882,12 +885,12 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       if (e.key === 'ArrowDown' || e.key === 'PageDown') {
         if (activeIdxRef.current < items.length - 1) {
           e.preventDefault();
-          scrollToIndex(activeIdxRef.current + 1);
+          stepByDelta(1);
         }
       } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
         if (activeIdxRef.current > 0) {
           e.preventDefault();
-          scrollToIndex(activeIdxRef.current - 1);
+          stepByDelta(-1);
         }
       } else if (e.key === 'Escape') {
         onClose();
@@ -895,7 +898,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items.length, scrollToIndex, onClose, quickOpportunityItem]);
+  }, [items.length, stepByDelta, onClose, quickOpportunityItem]);
 
   const parsePriceNumber = (val: any): number => {
     if (val === null || val === undefined) return NaN;
@@ -1324,7 +1327,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                   onTouchStart={markUserInteraction}
                   onWheel={markUserInteraction}
                   onPointerDown={markUserInteraction}
-                  className="flex-1 min-w-0 h-full overflow-y-auto snap-y snap-mandatory overscroll-y-none scrollbar-hide touch-pan-y [overflow-anchor:none]"
+                  className="relative flex-1 min-w-0 h-full overflow-y-auto snap-y snap-mandatory overscroll-y-none scrollbar-hide touch-pan-y [overflow-anchor:none]"
                 >
                   {items.map((item, idx) => {
                     const isNearby = Math.abs(idx - activeIdx) <= 4 || (jumpTargetIdx !== null && Math.abs(idx - jumpTargetIdx) <= 1);
@@ -1427,7 +1430,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                     type="button"
                                     onPointerDown={(e) => e.stopPropagation()}
                                     onTouchStart={(e) => e.stopPropagation()}
-                                    onClick={(e) => { e.stopPropagation(); scrollToIndex(idx - 1); }}
+                                    onClick={(e) => { e.stopPropagation(); stepByDelta(-1); }}
                                     className="w-7 h-7 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
                                     title="Əvvəlki məhsul"
                                   >
@@ -1439,7 +1442,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                     type="button"
                                     onPointerDown={(e) => e.stopPropagation()}
                                     onTouchStart={(e) => e.stopPropagation()}
-                                    onClick={(e) => { e.stopPropagation(); scrollToIndex(idx + 1); }}
+                                    onClick={(e) => { e.stopPropagation(); stepByDelta(1); }}
                                     className="w-7 h-7 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
                                     title="Növbəti məhsul"
                                   >
@@ -1520,7 +1523,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                   style={{ WebkitUserSelect: 'text', WebkitTouchCallout: 'default' }}
                                   className="text-[14px] sm:text-[15px] font-bold text-gray-900 leading-snug break-words select-text cursor-text"
                                 >
-                                  {cleanName}
+                                  {p.productName}
                                 </h2>
                               </div>
 
@@ -1529,7 +1532,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                   {p.newPrice} <span className="text-base sm:text-lg">₼</span>
                                 </span>
                                 {p.oldPrice && p.oldPrice !== '---' && (
-                                  <span className="text-gray-400 text-[11px] sm:text-xs line-through font-medium leading-none mt-1 whitespace-nowrap">
+                                  <span className="text-red-500 text-xs sm:text-sm line-through font-semibold leading-none mt-1 whitespace-nowrap">
                                     {p.oldPrice} ₼
                                   </span>
                                 )}

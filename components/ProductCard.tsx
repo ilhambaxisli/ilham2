@@ -14,7 +14,6 @@ import {
   Baby, 
   Package,
   Edit2,
-  TrendingDown,
   Heart,
   Clock
 } from 'lucide-react';
@@ -391,7 +390,9 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300
         ${isListMode ? 'flex flex-row p-2 sm:p-2.5 items-center' : isRowOnMobile ? 'flex flex-row sm:flex-col p-2 sm:p-0 items-center sm:items-stretch' : 'flex flex-col'}
         h-full group relative cursor-pointer z-10
-        shadow-2xs hover:shadow-xs border border-gray-100 hover:border-${accentColor}-200
+        ${hasCheaperAlternative
+          ? 'shadow-xs hover:shadow-sm border-[1.5px] border-emerald-500 hover:border-emerald-600'
+          : `shadow-2xs hover:shadow-xs border border-gray-100 hover:border-${accentColor}-200`}
         ${isHighlighted ? 'ring-4 ring-yellow-400 ring-offset-2 scale-105 z-20' : ''}
       `}>
         
@@ -477,43 +478,65 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
             </>
           )}
 
-          {/* Top Left: Market Logo Icon on top of the image */}
-          {marketLogoUrl && (
-            <div 
-              className={`absolute ${isMini ? 'top-1 left-1 w-5 h-5 sm:w-6 sm:h-6' : `top-1.5 left-1.5 ${isThreeColMobile ? 'w-5 h-5 sm:w-7 sm:h-7' : 'w-6 h-6 sm:w-7 sm:h-7'}`} z-20 rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden pointer-events-none`}
-              title={marketName || "Market"}
-            >
-              <img src={marketLogoUrl} alt={marketName || "Market"} className="w-full h-full object-contain" />
-            </div>
-          )}
+          {/* Top Left: Market Logo Icon and/or "Ucuzu var" badge, or Discount Percentage */}
+          {(marketLogoUrl || hasCheaperAlternative || product.discountPercentage) && (() => {
+            const hasHeartOverImage = !isAdmin && Boolean(onToggleFavorite);
+            const topLeftMaxWidth = hasHeartOverImage
+              ? isListMode
+                ? 'max-w-[calc(100%-0.5rem)]'
+                : isRowOnMobile
+                  ? 'max-w-[calc(100%-0.5rem)] sm:max-w-[calc(100%-3rem)]'
+                  : 'max-w-[calc(100%-2rem)] sm:max-w-[calc(100%-3rem)]'
+              : 'max-w-[calc(100%-0.5rem)]';
 
-          {/* Top Left: Discount Percentage Badge (when no market logo sits at top-left) */}
-          {!marketLogoUrl && product.discountPercentage && (
-            <div className={`
-              absolute top-1 left-1 sm:top-1.5 sm:left-1.5 ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center z-10 pointer-events-none
-              ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
-            `}>
-              {product.discountPercentage}
-            </div>
-          )}
+            return (
+              <div className={`absolute ${isMini ? 'top-1 left-1' : 'top-1 left-1 sm:top-1.5 sm:left-1.5'} z-20 flex flex-col items-start gap-1 pointer-events-none ${topLeftMaxWidth}`}>
+                {marketLogoUrl && (
+                  <div 
+                    className={`${isMini ? 'w-5 h-5 sm:w-6 sm:h-6' : isThreeColMobile ? 'w-5 h-5 sm:w-7 sm:h-7' : 'w-6 h-6 sm:w-7 sm:h-7'} rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden`}
+                    title={marketName || "Market"}
+                  >
+                    <img src={marketLogoUrl} alt={marketName || "Market"} className="w-full h-full object-contain" />
+                  </div>
+                )}
 
-          {/* Bottom Left: Cheaper Alternative badge (and Discount Percentage when market logo occupies top-left) */}
-          {(hasCheaperAlternative || (marketLogoUrl && product.discountPercentage)) && (
+                {hasCheaperAlternative && (
+                  <div
+                    className={`flex flex-col items-start text-left font-black text-emerald-700 leading-[1.05] tracking-tight select-none drop-shadow-[0_1px_1px_rgba(255,255,255,0.95)] ${
+                      isThreeColMobile
+                        ? 'text-[9.5px] min-[380px]:text-[10.5px] sm:text-xs'
+                        : isMini
+                          ? 'text-[9px] sm:text-[10px]'
+                          : 'text-[10.5px] sm:text-xs'
+                    }`}
+                  >
+                    <span>Daha</span>
+                    <span>Ucuzu</span>
+                    <span>Var</span>
+                  </div>
+                )}
+
+                {!marketLogoUrl && !hasCheaperAlternative && product.discountPercentage && (
+                  <div className={`
+                    ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center
+                    ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
+                  `}>
+                    {product.discountPercentage}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Bottom Left: Discount Percentage when top-left is occupied by Market Logo or "Ucuzu var" */}
+          {(marketLogoUrl || hasCheaperAlternative) && product.discountPercentage && (
             <div className="absolute bottom-1 left-1 sm:bottom-1.5 sm:left-1.5 z-10 flex flex-col items-start gap-0.5 sm:gap-1 pointer-events-none">
-              {hasCheaperAlternative && (
-                <div className={`inline-flex items-center gap-0.5 sm:gap-1 bg-green-100/95 backdrop-blur-xs border border-green-300/80 text-green-800 rounded font-bold shadow-xs ${isThreeColMobile ? 'px-1 sm:px-1.5 py-0.5 text-[7px] sm:text-[9px]' : isMini ? 'px-1 sm:px-1.5 py-0.5 text-[6.5px] sm:text-[8px]' : 'px-1.5 py-0.5 text-[8px] sm:text-[9.5px]'}`}>
-                  <TrendingDown className={isMini || isThreeColMobile ? "w-2 h-2 sm:w-2.5 sm:h-2.5" : "w-2.5 h-2.5"} />
-                  {isMini || isThreeColMobile ? <><span className="sm:hidden">Ucuz</span><span className="hidden sm:inline">Daha Ucuz</span></> : 'Ucuz'}
-                </div>
-              )}
-              {marketLogoUrl && product.discountPercentage && (
-                <div className={`
-                  ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center
-                  ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
-                `}>
-                  {product.discountPercentage}
-                </div>
-              )}
+              <div className={`
+                ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center
+                ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
+              `}>
+                {product.discountPercentage}
+              </div>
             </div>
           )}
 
@@ -564,7 +587,7 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
               }`} 
               title={product.productName}
             >
-              {cleanName}
+              {product.productName}
             </h3>
           </div>
         </div>
@@ -572,30 +595,30 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         {/* Price Row */}
         <div className={`${isThreeColMobile || isMini ? 'mt-1.5 sm:mt-2 pt-1.5 flex-wrap sm:flex-nowrap' : 'mt-2 pt-1.5'} border-t border-gray-100 flex items-center justify-between gap-1`}>
           {/* Left: Prices (stacked vertically for mini sample cards) */}
-          <div className={isMini ? 'flex flex-col items-start justify-center gap-0.5 min-h-[2.2rem] sm:min-h-[2.5rem] min-w-0' : 'flex items-baseline gap-1 sm:gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden min-w-0'}>
+          <div className={isMini ? 'flex flex-col items-start justify-center gap-0.5 min-h-[2.4rem] sm:min-h-[2.7rem] min-w-0' : `flex flex-wrap items-baseline ${isThreeColMobile ? 'gap-x-1 sm:gap-x-1.5' : 'gap-x-1.5'} gap-y-0.5 min-w-0`}>
             <span className={`font-black ${isExpired ? 'text-gray-500' : 'text-emerald-600'} leading-none ${
               isListMode
-                ? 'text-lg xs:text-xl'
+                ? 'text-xl min-[380px]:text-2xl'
                 : isRowOnMobile
-                  ? 'text-lg xs:text-xl sm:text-lg'
+                  ? 'text-xl min-[380px]:text-2xl sm:text-xl'
                   : isThreeColMobile
-                    ? 'text-[13px] xs:text-sm sm:text-lg'
+                    ? 'text-[15px] min-[400px]:text-[16.5px] sm:text-xl'
                     : isMini
-                      ? 'text-sm sm:text-base'
-                      : 'text-base sm:text-lg'
+                      ? 'text-[15px] sm:text-lg'
+                      : 'text-lg sm:text-xl'
             } shrink-0 whitespace-nowrap`}>
               {product.newPrice} <span className="text-[0.8em] font-bold">₼</span>
             </span>
             {product.oldPrice && product.oldPrice !== '---' && (
-              <span className={`text-gray-400 line-through leading-none font-semibold ${
+              <span className={`text-red-500 line-through leading-none font-semibold ${
                 isListMode
-                  ? 'text-xs xs:text-sm'
+                  ? 'text-xs min-[380px]:text-sm'
                   : isRowOnMobile
-                    ? 'text-xs xs:text-sm sm:text-sm'
+                    ? 'text-xs min-[380px]:text-sm sm:text-sm'
                     : isThreeColMobile
-                      ? 'text-[9.5px] sm:text-sm'
+                      ? 'text-[10.5px] min-[400px]:text-[11.5px] sm:text-sm'
                       : isMini
-                        ? 'text-[10px] sm:text-xs'
+                        ? 'text-[11px] sm:text-xs'
                         : 'text-xs sm:text-sm'
               } shrink-0 whitespace-nowrap`}>
                 {product.oldPrice}

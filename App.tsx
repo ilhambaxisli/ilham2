@@ -106,6 +106,40 @@ const sortMarketsByOrder = (marketList: MarketData[]): MarketData[] => {
   });
 };
 
+const isMarketFullyExpired = (market: MarketData): boolean => {
+  const catalogs = market.catalogs || [];
+
+  if (catalogs.length > 0) {
+    let totalProducts = 0;
+    for (const cat of catalogs) {
+      const prods = cat.products || [];
+      totalProducts += prods.length;
+      for (const prod of prods) {
+        const cd = calculateDaysLeft(extractProductEndDate(prod, cat.endDate));
+        if (!cd || cd.daysLeft >= 0) {
+          return false;
+        }
+      }
+    }
+    if (totalProducts > 0) return true;
+
+    return catalogs.every(cat => {
+      const cd = cat.endDate ? calculateDaysLeft(cat.endDate) : null;
+      return Boolean(cd && cd.daysLeft < 0);
+    });
+  }
+
+  const prods = market.products || [];
+  if (prods.length === 0) return false;
+  for (const prod of prods) {
+    const cd = calculateDaysLeft(extractProductEndDate(prod, undefined));
+    if (!cd || cd.daysLeft >= 0) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const INITIAL_BANNER_1: BannerData = {
   id: 'banner-1',
   isVisible: false,
@@ -862,7 +896,10 @@ const App: React.FC = () => {
     return 0;
   };
 
-  const handleSelectMarket = (marketId: string | null) => {
+  const handleSelectMarket = (marketId: string | null, options?: { preserveSearchReturn?: boolean }) => {
+    if (!options?.preserveSearchReturn) {
+      setSearchReturnState(null);
+    }
     setActiveMarketId(marketId);
     setSelectedCategoryFilter(null);
     setActiveCategoryDropdown(null);
@@ -976,6 +1013,13 @@ const App: React.FC = () => {
     });
   };
   const [previousViewState, setPreviousViewState] = useState<ViewState | null>(null);
+  const [searchReturnState, setSearchReturnState] = useState<{
+    searchQuery: string;
+    maxPrice: string;
+    expandedSearchMarkets: Record<string, boolean>;
+    scrollY: number;
+  } | null>(null);
+  const skipSearchResetRef = useRef<boolean>(false);
   const [instagramViewerData, setInstagramViewerData] = useState<{posts: string[], name: string, initialIndex: number} | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState<string | null>(null);
@@ -1005,6 +1049,7 @@ const App: React.FC = () => {
     }
     setShowCheaperOnly(active);
     if (active) {
+      setSearchReturnState(null);
       setActiveMarketId(null);
       setSelectedCategoryFilter(null);
       setActiveCategoryDropdown(null);
@@ -1025,37 +1070,47 @@ const App: React.FC = () => {
   };
 
   const handleSearchQueryChange = (q: string) => {
-    const wasEmpty = searchQuery.trim().length === 0;
-    const isNowNonEmpty = q.trim().length > 0;
+    const wasSearchable = searchQuery.trim().length >= 2;
+    const isNowSearchable = q.trim().length >= 2;
     setSearchQuery(q);
-    setIsSearching(true);
-    if (isNowNonEmpty) {
+    if (isNowSearchable) {
+      setSearchReturnState(null);
       setActiveMarketId(null);
       setSelectedCategoryFilter(null);
       setActiveCategoryDropdown(null);
       setIsMarketSwitcherOpen(false);
       if (showFavorites) setShowFavorites(false);
       if (showCheaperOnly) handleShowCheaperOnlyChange(false);
-      if (wasEmpty) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (!wasSearchable || debouncedSearchQuery.trim().length < 2) {
+        setDebouncedSearchQuery(q);
+        setIsSearching(false);
+      } else {
+        setIsSearching(true);
       }
+      if (!wasSearchable) {
+        window.scrollTo({ top: 0, behavior: 'auto' });
+      }
+    } else {
+      setDebouncedSearchQuery('');
+      setIsSearching(false);
     }
   };
 
   const handleQuickSearch = (q: string) => {
-    const wasEmpty = searchQuery.trim().length === 0;
-    const isNowNonEmpty = q.trim().length > 0;
+    const wasSearchable = searchQuery.trim().length >= 2;
+    const isNowSearchable = q.trim().length >= 2;
     setSearchQuery(q);
-    setDebouncedSearchQuery(q);
+    setDebouncedSearchQuery(isNowSearchable ? q : '');
     setIsSearching(false);
-    if (isNowNonEmpty) {
+    if (isNowSearchable) {
+      setSearchReturnState(null);
       setActiveMarketId(null);
       setSelectedCategoryFilter(null);
       setActiveCategoryDropdown(null);
       setIsMarketSwitcherOpen(false);
       if (showFavorites) setShowFavorites(false);
       if (showCheaperOnly) handleShowCheaperOnlyChange(false);
-      if (wasEmpty) {
+      if (!wasSearchable) {
         window.scrollTo({ top: 0, behavior: 'auto' });
       }
     }
@@ -1086,12 +1141,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery || '');
+      setDebouncedSearchQuery(searchQuery.trim().length >= 2 ? searchQuery : '');
       setDebouncedMaxPrice(maxPrice || '');
       setIsSearching(false);
-    }, 500);
+    }, 180);
     return () => { clearTimeout(handler); };
-  }, [searchQuery, maxPrice, showFavorites]); 
+  }, [searchQuery, maxPrice]); 
 
   useEffect(() => { 
     if (showFavorites) {
@@ -1102,6 +1157,10 @@ const App: React.FC = () => {
   // Reset lazy load count & expanded search markets on market, catalog, or search query change
   useEffect(() => {
     setVisibleDetailCount(24);
+    if (skipSearchResetRef.current) {
+      skipSearchResetRef.current = false;
+      return;
+    }
     setExpandedSearchMarkets({});
   }, [activeMarketId, activeCatalogByMarket, debouncedSearchQuery, debouncedMaxPrice]);
 
@@ -1208,7 +1267,14 @@ const App: React.FC = () => {
     persistData(markets, b1, b2);
   };
 
-  const sortedMarkets = useMemo(() => sortMarketsByOrder(markets), [markets]);
+  const sortedMarkets = useMemo(() => {
+    const baseSorted = sortMarketsByOrder(markets);
+    return [...baseSorted].sort((a, b) => {
+      const expiredA = isMarketFullyExpired(a) ? 1 : 0;
+      const expiredB = isMarketFullyExpired(b) ? 1 : 0;
+      return expiredA - expiredB;
+    });
+  }, [markets]);
 
   // One consistent sample product from each market, horizontally scrollable (deterministic so it doesn't jump randomly)
   const sampleFeaturedProducts = useMemo(() => {
@@ -1681,6 +1747,7 @@ const App: React.FC = () => {
     setViewProduct(null);
     setOpportunityModalIndex(null);
     setPreviousViewState(null);
+    setSearchReturnState(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1816,7 +1883,7 @@ const App: React.FC = () => {
   );
 
   // Check if search or any subpage view is active
-  const isSearchActive = searchQuery.trim() !== '';
+  const isSearchActive = searchQuery.trim().length >= 2;
   const isSubpageActive = activeMarketId !== null || showFavorites || showCheaperOnly;
   const hasActiveSubpage = Boolean(isSubpageActive || isSearchActive);
 
@@ -1824,10 +1891,12 @@ const App: React.FC = () => {
   // 0: Root Home page
   // 1: Subpage (market / favorites / cheaper)
   // +1 if Search query is active
+  // +1 if navigated into a market from Search (so Back returns to Search first)
   // +1 if Modal is open
   let targetDepth = 0;
   if (isSubpageActive) targetDepth += 1;
   if (isSearchActive) targetDepth += 1;
+  if (searchReturnState && isSubpageActive && !isSearchActive) targetDepth += 1;
   if (hasOpenModal) targetDepth += 1;
 
   const closeAllModals = useCallback(() => {
@@ -1852,6 +1921,39 @@ const App: React.FC = () => {
 
   const searchQueryRef = useRef(searchQuery);
   searchQueryRef.current = searchQuery;
+
+  const searchReturnStateRef = useRef(searchReturnState);
+  searchReturnStateRef.current = searchReturnState;
+
+  const restoreFromSearchReturn = useCallback(() => {
+    const saved = searchReturnStateRef.current;
+    if (!saved) return;
+    skipSearchResetRef.current = true;
+    setSearchReturnState(null);
+    setActiveMarketId(null);
+    setSelectedCategoryFilter(null);
+    setActiveCategoryDropdown(null);
+    setIsMarketSwitcherOpen(false);
+    setShowFavorites(false);
+    setDeferredCheaperOnly(false);
+    setIsProcessingCheaper(false);
+    setShowCheaperOnly(false);
+    setSearchQuery(saved.searchQuery);
+    setDebouncedSearchQuery(saved.searchQuery);
+    setMaxPrice(saved.maxPrice);
+    setDebouncedMaxPrice(saved.maxPrice);
+    setExpandedSearchMarkets(saved.expandedSearchMarkets || {});
+    setIsSearching(false);
+    const targetY = saved.scrollY || 0;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, behavior: 'auto' });
+      });
+    });
+  }, []);
+
+  const restoreFromSearchReturnRef = useRef(restoreFromSearchReturn);
+  restoreFromSearchReturnRef.current = restoreFromSearchReturn;
 
   const handleResetAppRef = useRef(handleResetApp);
   handleResetAppRef.current = handleResetApp;
@@ -1891,13 +1993,18 @@ const App: React.FC = () => {
           return;
         }
         // 2. If search is active, clear search field on first back button click!
-        if (searchQueryRef.current.trim() !== '') {
+        if (searchQueryRef.current.trim().length >= 2) {
           setSearchQuery('');
           setDebouncedSearchQuery('');
           setIsSearching(false);
           return;
         }
-        // 3. Otherwise exit market or subpage to root home
+        // 3. If user navigated to a market from Search Results, return to Search Results first!
+        if (searchReturnStateRef.current) {
+          restoreFromSearchReturnRef.current();
+          return;
+        }
+        // 4. Otherwise exit market or subpage to root home
         if (hasActiveSubpageRef.current) {
           handleResetAppRef.current();
           return;
@@ -1929,6 +2036,61 @@ const App: React.FC = () => {
   const activeDateStatus = getCatalogDateStatus(activeMarketCatalog || undefined);
   const activeMarketProducts = activeMarketCatalog ? (activeMarketCatalog.products || []) : (activeMarketObj?.products || []);
   const activeMarketFilteredProducts = activeMarketProducts.filter(filterProductForDetail);
+
+  const activeMarketCategoriesWithCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    activeMarketFilteredProducts.forEach(p => {
+      const cat = (p.category || 'Digər').trim() || 'Digər';
+      map.set(cat, (map.get(cat) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+  }, [activeMarketFilteredProducts]);
+
+  const activeMarketHasCategories =
+    activeMarketCategoriesWithCounts.length > 0 &&
+    !(activeMarketCategoriesWithCounts.length === 1 && activeMarketCategoriesWithCounts[0].name.toLowerCase() === 'digər');
+
+  const activeMarketCategoryColorIndexMap = useMemo(
+    () => new Map(activeMarketCategoriesWithCounts.map((c, idx) => [c.name, idx % CATEGORY_TAG_COLORS.length])),
+    [activeMarketCategoriesWithCounts]
+  );
+
+  const activeMarketFullOrderedProducts = useMemo(() => {
+    if (!activeMarketHasCategories) return activeMarketFilteredProducts;
+    const catOrderMap = new Map<string, DiscountProduct[]>();
+    activeMarketFilteredProducts.forEach(p => {
+      const cat = (p.category || 'Digər').trim() || 'Digər';
+      if (!catOrderMap.has(cat)) catOrderMap.set(cat, []);
+      catOrderMap.get(cat)!.push(p);
+    });
+    return Array.from(catOrderMap.values()).flat();
+  }, [activeMarketHasCategories, activeMarketFilteredProducts]);
+
+  const scrollToActiveCategorySection = (categoryName: string) => {
+    if (!activeMarketObj) return;
+    clickedCategoryRef.current = categoryName;
+    const startIdx = activeMarketFullOrderedProducts.findIndex(
+      p => ((p.category || 'Digər').trim() || 'Digər') === categoryName
+    );
+    const catInfo = activeMarketCategoriesWithCounts.find(c => c.name === categoryName);
+    const neededCount = startIdx >= 0 ? startIdx + (catInfo?.count || 1) + 12 : visibleDetailCount;
+
+    if (neededCount > visibleDetailCount) {
+      pendingCategoryScrollRef.current = { marketId: activeMarketObj.id, category: categoryName };
+      setVisibleDetailCount(neededCount);
+    } else {
+      pendingCategoryScrollRef.current = null;
+      requestAnimationFrame(() => {
+        const targetId = `category-section-${activeMarketObj.id}-${encodeURIComponent(categoryName)}`;
+        const el = document.getElementById(targetId);
+        if (el) {
+          const headerOffset = stickyHeaderRef.current?.offsetHeight || stickyHeaderHeight;
+          const targetY = el.getBoundingClientRect().top + window.scrollY - headerOffset - 8;
+          window.scrollTo({ top: Math.max(0, targetY), behavior: 'auto' });
+        }
+      });
+    }
+  };
 
   // Non-visual SEO metadata, canonical URL, OpenGraph & Schema.org JSON-LD synchronization
   useEffect(() => {
@@ -2045,58 +2207,70 @@ const App: React.FC = () => {
           {/* --- ACTIVE MARKET HEADER (Only when a market is selected) --- */}
           {!isLoading && !showFavorites && !showCheaperOnly && activeMarketId !== null && activeMarketObj ? (
             <>
-              {isMarketSwitcherOpen && (
+              {(isMarketSwitcherOpen || activeCategoryDropdown === activeMarketObj.id) && (
                 <div 
                   className="fixed inset-0 z-40" 
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsMarketSwitcherOpen(false);
+                    setActiveCategoryDropdown(null);
                   }} 
                 />
               )}
               <div className="relative z-50 bg-white/95 backdrop-blur-md border-t border-b border-gray-100 py-1.5 sm:py-2 px-2.5 sm:px-4 shadow-xs">
                 <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
-                  {/* Left: Back to Home + Clickable Market Logo & Name Dropdown */}
+                  {/* Left: Back to Home + Market Switcher & Category Dropdown */}
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <button
                       type="button"
                       onClick={() => {
                         setIsMarketSwitcherOpen(false);
-                        if (searchQuery.trim() !== '') {
+                        setActiveCategoryDropdown(null);
+                        if (searchQuery.trim().length >= 2) {
                           setSearchQuery('');
                           setDebouncedSearchQuery('');
                           setIsSearching(false);
+                        } else if (searchReturnState) {
+                          restoreFromSearchReturn();
                         } else {
                           handleSelectMarket(null);
                         }
                       }}
                       className="p-1.5 sm:p-2 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-gray-700 rounded-lg sm:rounded-xl border border-gray-200 transition-all flex items-center gap-1 shrink-0 active:scale-95 cursor-pointer"
-                      title="Geri qayıt"
+                      title={searchReturnState ? "Axtarış nəticələrinə qayıt" : "Geri qayıt"}
                     >
                       <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700" strokeWidth={2.5} />
                       <span className="hidden sm:inline text-xs font-bold text-gray-700">Geri</span>
                     </button>
 
                     <div className="relative min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveCategoryDropdown(null);
-                          setIsMarketSwitcherOpen(prev => !prev);
-                        }}
-                        title="Bütün marketləri gör və seç"
-                        className="flex items-center gap-2 sm:gap-2.5 min-w-0 text-left rounded-xl px-1.5 py-1 -my-1 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
-                      >
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white border border-gray-100 shadow-2xs flex items-center justify-center overflow-hidden shrink-0">
+                      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveCategoryDropdown(null);
+                            setIsMarketSwitcherOpen(prev => !prev);
+                          }}
+                          title="Bütün marketləri gör və seç"
+                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-white border border-gray-100 shadow-2xs flex items-center justify-center overflow-hidden shrink-0 cursor-pointer hover:bg-gray-50 active:scale-95 transition-all"
+                        >
                           {activeMarketObj.logoUrl ? (
                             <img src={activeMarketObj.logoUrl} alt={activeMarketObj.name} className="w-full h-full object-contain p-0.5" />
                           ) : (
                             <span className={`text-${activeMarketObj.themeColor || 'green'}-700 font-bold text-sm sm:text-lg`}>{activeMarketObj.logoPlaceholder}</span>
                           )}
-                        </div>
+                        </button>
 
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1 sm:gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveCategoryDropdown(null);
+                              setIsMarketSwitcherOpen(prev => !prev);
+                            }}
+                            title="Bütün marketləri gör və seç"
+                            className="flex items-center gap-1 sm:gap-1.5 min-w-0 text-left rounded-lg px-1 -mx-1 py-0.5 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
+                          >
                             <h2 className="text-sm sm:text-base md:text-lg font-black text-gray-900 truncate tracking-tight">{activeMarketObj.name}</h2>
                             <ChevronDown className={`w-4 h-4 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${isMarketSwitcherOpen ? 'rotate-180 text-gray-800' : ''}`} />
                             {activeDateStatus.label && (
@@ -2104,30 +2278,42 @@ const App: React.FC = () => {
                                 {activeDateStatus.label}
                               </span>
                             )}
-                          </div>
-                          <div className="flex items-center gap-1.5 min-w-0 flex-nowrap overflow-hidden">
+                          </button>
+
+                          <div className="flex items-center gap-1.5 min-w-0 flex-nowrap mt-0.5">
                             <span className="text-[10px] sm:text-xs text-gray-400 font-medium shrink-0">
                               {activeMarketFilteredProducts.length} məhsul
                             </span>
-                            {scrolledCategoryInfo && (() => {
+                            {scrolledCategoryInfo && activeMarketHasCategories && (() => {
                               const scColor = CATEGORY_TAG_COLORS[scrolledCategoryInfo.colorIdx % CATEGORY_TAG_COLORS.length] || CATEGORY_TAG_COLORS[0];
+                              const isCatOpen = activeCategoryDropdown === activeMarketObj.id;
                               return (
-                                <span className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-md border text-[10px] sm:text-xs font-extrabold min-w-0 max-w-[165px] sm:max-w-[260px] ${scColor.chip}`}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsMarketSwitcherOpen(false);
+                                    setActiveCategoryDropdown(prev => prev === activeMarketObj.id ? null : activeMarketObj.id);
+                                  }}
+                                  title="Kateqoriyaları aç və seç"
+                                  className={`inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-md border text-[10px] sm:text-xs font-extrabold min-w-0 max-w-[175px] sm:max-w-[270px] cursor-pointer active:scale-95 transition-all shadow-2xs ${scColor.chip}`}
+                                >
                                   <span className="truncate">{scrolledCategoryInfo.name}</span>
                                   <span className={`text-[9px] sm:text-[10px] font-black px-1 py-0.5 rounded leading-none shrink-0 ${scColor.count}`}>
                                     {scrolledCategoryInfo.count}
                                   </span>
-                                </span>
+                                  <ChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-200 ${isCatOpen ? 'rotate-180' : ''}`} />
+                                </button>
                               );
                             })()}
                           </div>
                         </div>
-                      </button>
+                      </div>
 
                       {/* Market Switcher Dropdown (Category-style list) */}
                       {isMarketSwitcherOpen && (
                         <div className="absolute left-0 top-full mt-2 w-64 sm:w-72 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50 max-h-80 overflow-y-auto animate-[fadeIn_0.15s_ease-out]">
-                          <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                          <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider sticky top-0 bg-white z-10">
                             <span>Marketlər</span>
                             <button 
                               type="button"
@@ -2171,6 +2357,51 @@ const App: React.FC = () => {
                                 </div>
                                 <span className="text-[10px] text-gray-500 bg-gray-100 font-semibold px-2 py-0.5 rounded-full shrink-0">
                                   {mCount}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Vertical Categories Dropdown */}
+                      {activeCategoryDropdown === activeMarketObj.id && activeMarketHasCategories && (
+                        <div className="absolute left-0 top-full mt-2 w-64 sm:w-72 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50 max-h-80 overflow-y-auto animate-[fadeIn_0.15s_ease-out]">
+                          <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider sticky top-0 bg-white z-10">
+                            <span>Kateqoriyalar</span>
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setActiveCategoryDropdown(null); }}
+                              className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          {activeMarketCategoriesWithCounts.map((cat) => {
+                            const cIdx = activeMarketCategoryColorIndexMap.get(cat.name) ?? 0;
+                            const cColor = CATEGORY_TAG_COLORS[cIdx] || CATEGORY_TAG_COLORS[0];
+                            const isCurrentCat = scrolledCategoryInfo?.name === cat.name;
+                            return (
+                              <button
+                                key={`sticky-cat-${cat.name}`}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveCategoryDropdown(null);
+                                  scrollToActiveCategorySection(cat.name);
+                                }}
+                                className={`w-full text-left px-3 py-2 text-xs font-medium flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                                  isCurrentCat
+                                    ? 'bg-gray-100 font-bold text-gray-900'
+                                    : 'text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 border ${cColor.chip}`} />
+                                  <span className="truncate">{cat.name}</span>
+                                </div>
+                                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${cColor.count}`}>
+                                  {cat.count}
                                 </span>
                               </button>
                             );
@@ -2390,7 +2621,7 @@ const App: React.FC = () => {
                </div>
             ) : (
               <>
-                 {(debouncedSearchQuery.length > 0 || debouncedMaxPrice.length > 0 || showCheaperOnly) ? (
+                 {(searchQuery.trim().length >= 2 || debouncedSearchQuery.trim().length >= 2 || debouncedMaxPrice.length > 0 || showCheaperOnly) ? (
                   <div className="space-y-8 animate-[fadeIn_0.5s_ease-out] relative min-h-[500px]">
                     {isProcessingCheaper && (
                        <div className="fixed inset-0 z-[100] bg-black/20 backdrop-blur-sm flex flex-col items-center justify-center">
@@ -2543,6 +2774,22 @@ const App: React.FC = () => {
                                     }
                                   }}
                                   onEditProduct={(product) => handleEditFromSearch(product, market.id)}
+                                  onSelectMarket={() => {
+                                    setSearchReturnState({
+                                      searchQuery: searchQuery || debouncedSearchQuery,
+                                      maxPrice: maxPrice || debouncedMaxPrice,
+                                      expandedSearchMarkets: { ...expandedSearchMarkets },
+                                      scrollY: window.scrollY
+                                    });
+                                    setSearchQuery('');
+                                    setDebouncedSearchQuery('');
+                                    setMaxPrice('');
+                                    setDebouncedMaxPrice('');
+                                    setIsSearching(false);
+                                    setShowCheaperOnly(false);
+                                    setShowFavorites(false);
+                                    handleSelectMarket(market.id, { preserveSearchReturn: true });
+                                  }}
                                 />
                               );
                             });
@@ -2702,23 +2949,7 @@ const App: React.FC = () => {
                               : (market.products || []);
                             const previewProducts = previewCatalog ? (previewCatalog.products || []) : allMarketProducts;
                             const catalogProductsCount = previewProducts.length;
-
-                            const catalogLevelCountdown = previewCatalog?.endDate ? calculateDaysLeft(previewCatalog.endDate) : null;
-                            let hasAnyDate = false;
-                            let hasActiveDate = false;
-                            for (const prod of previewProducts) {
-                              const cd = calculateDaysLeft(extractProductEndDate(prod, previewCatalog?.endDate));
-                              if (cd) {
-                                hasAnyDate = true;
-                                if (cd.daysLeft >= 0) {
-                                  hasActiveDate = true;
-                                  break;
-                                }
-                              }
-                            }
-                            const isMarketExpired = hasAnyDate
-                              ? !hasActiveDate
-                              : Boolean(catalogLevelCountdown && catalogLevelCountdown.daysLeft < 0);
+                            const isMarketExpired = isMarketFullyExpired(market);
 
                             return (
                               <div
@@ -3086,6 +3317,7 @@ const App: React.FC = () => {
           onShowFavoritesChange={(active) => {
              setShowFavorites(active);
              if (active) {
+               setSearchReturnState(null);
                handleShowCheaperOnlyChange(false);
                setActiveMarketId(null);
                setSearchQuery('');

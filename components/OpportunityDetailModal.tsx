@@ -571,7 +571,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                       style={{ WebkitUserSelect: 'text', WebkitTouchCallout: 'default' }}
                       className="text-lg sm:text-xl font-bold text-gray-900 leading-snug mb-3 line-clamp-2 select-text cursor-text"
                     >
-                      {cleanName}
+                      {item.productName}
                     </h2>
 
                     {/* Cheapest vs Highest Price Strip */}
@@ -582,7 +582,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                             {cheapest.originalPriceStr} <span className="text-base">₼</span>
                           </span>
                           {maxPrice > minPrice && (
-                            <span className="text-xs sm:text-sm text-gray-400 line-through font-semibold leading-none">
+                            <span className="text-xs sm:text-sm text-red-500 line-through font-semibold leading-none">
                               {priciest.originalPriceStr} ₼
                             </span>
                           )}
