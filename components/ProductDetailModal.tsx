@@ -399,7 +399,7 @@ const ZoomableProductImage: React.FC<ZoomableProductImageProps> = ({
         }
       }}
       style={{ touchAction: isZoomed ? 'none' : 'pan-y' }}
-      className={`relative w-full h-56 sm:h-64 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden ${
+      className={`relative w-full h-52 sm:h-60 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden ${
         isZoomed ? 'cursor-grab active:cursor-grabbing' : ''
       }`}
     >
@@ -612,6 +612,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const burstTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const smoothScrollRafRef = useRef<number | null>(null);
   const pendingDirectJumpRef = useRef<number | null>(null);
+  const animTargetIdxRef = useRef<number>(clampedPropIdx);
 
   // Lock background page scroll without collapsing window.scrollY via position: fixed (prevents scroll reset on close/history.go)
   useLayoutEffect(() => {
@@ -794,6 +795,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     if (!el) return;
     markUserInteraction();
     const clamped = Math.max(0, Math.min(items.length - 1, targetIdx));
+    animTargetIdxRef.current = clamped;
     const targetSlide = el.children[clamped] as HTMLElement | undefined;
     const targetTop = targetSlide && (clamped === 0 || targetSlide.offsetTop > 0)
       ? targetSlide.offsetTop
@@ -806,16 +808,20 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       return;
     }
 
-    // Pre-render target slide immediately so even long jumps (10+ products ahead) glide with zero blank flash
+    // Pre-render target slide immediately so even long glides render with zero blank flash
     setJumpTargetIdx(clamped);
     el.style.scrollSnapType = 'none';
-    const duration = Math.min(340, Math.max(150, 140 + Math.abs(clamped - activeIdxRef.current) * 20));
+    const stepDistance = Math.abs(clamped - activeIdxRef.current);
+    const duration = Math.min(480, Math.max(320, 300 + stepDistance * 30));
     const startTime = performance.now();
 
     const step = (now: number) => {
       const elapsed = now - startTime;
       const progress = Math.min(1, elapsed / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
+      // Smooth easeInOutCubic curve so up/down clicks glide fluidly instead of jumping
+      const eased = progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
       el.scrollTop = startTop + distance * eased;
 
       if (el.clientHeight > 0) {
@@ -844,6 +850,14 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
     smoothScrollRafRef.current = requestAnimationFrame(step);
   }, [items.length, markUserInteraction, onSelectIndex]);
+
+  const stepByDelta = useCallback((delta: number) => {
+    const baseIdx = smoothScrollRafRef.current !== null ? animTargetIdxRef.current : activeIdxRef.current;
+    const nextIdx = Math.max(0, Math.min(items.length - 1, baseIdx + delta));
+    if (nextIdx !== baseIdx || smoothScrollRafRef.current === null) {
+      scrollToIndex(nextIdx);
+    }
+  }, [items.length, scrollToIndex]);
 
   const handleScroll = () => {
     const el = scrollerRef.current;
@@ -1082,7 +1096,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
         <button
           type="button"
           disabled={!hasPrev}
-          onClick={(e) => { e.stopPropagation(); scrollToIndex(activeIdx - 1); }}
+          onClick={(e) => { e.stopPropagation(); stepByDelta(-1); }}
           className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all ${
             hasPrev 
               ? 'bg-white hover:bg-emerald-50 text-gray-800 hover:text-emerald-700 hover:scale-110 active:scale-90 cursor-pointer border border-gray-100' 
@@ -1103,7 +1117,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
         <button
           type="button"
           disabled={!hasNext}
-          onClick={(e) => { e.stopPropagation(); scrollToIndex(activeIdx + 1); }}
+          onClick={(e) => { e.stopPropagation(); stepByDelta(1); }}
           className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all ${
             hasNext 
               ? 'bg-white hover:bg-emerald-50 text-gray-800 hover:text-emerald-700 hover:scale-110 active:scale-90 cursor-pointer border border-gray-100' 
@@ -1411,6 +1425,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                 {idx > 0 && (
                                   <button
                                     type="button"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    onTouchStart={(e) => e.stopPropagation()}
                                     onClick={(e) => { e.stopPropagation(); scrollToIndex(idx - 1); }}
                                     className="w-7 h-7 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
                                     title="Əvvəlki məhsul"
@@ -1421,6 +1437,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                 {idx < items.length - 1 && (
                                   <button
                                     type="button"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    onTouchStart={(e) => e.stopPropagation()}
                                     onClick={(e) => { e.stopPropagation(); scrollToIndex(idx + 1); }}
                                     className="w-7 h-7 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
                                     title="Növbəti məhsul"
@@ -1498,7 +1516,10 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
-                                <h2 className="text-[15px] sm:text-base font-bold text-gray-900 leading-tight line-clamp-2">
+                                <h2
+                                  style={{ WebkitUserSelect: 'text', WebkitTouchCallout: 'default' }}
+                                  className="text-[14px] sm:text-[15px] font-bold text-gray-900 leading-snug break-words select-text cursor-text"
+                                >
                                   {cleanName}
                                 </h2>
                               </div>

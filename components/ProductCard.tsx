@@ -367,7 +367,10 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
   const softBadge = getMarketSoftBadgeStyle(marketName || '', accentColor);
 
   return (
-    <div className={`relative flex flex-col h-full ${showMarketRibbon ? (isMini ? 'pt-4 sm:pt-5' : 'pt-5 sm:pt-5.5') : ''}`}>
+    <div
+      style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+      className={`relative flex flex-col h-full select-none ${showMarketRibbon ? (isMini ? 'pt-4 sm:pt-5' : 'pt-5 sm:pt-5.5') : ''}`}
+    >
       {/* Market Name Tab - Sits UNDER the card (z-0), soft brand color matching the market */}
       {showMarketRibbon && formattedMarketName && (
         <div 

@@ -567,7 +567,10 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                       </span>
                     </div>
 
-                    <h2 className="text-lg sm:text-xl font-bold text-gray-900 leading-snug mb-3 line-clamp-2">
+                    <h2
+                      style={{ WebkitUserSelect: 'text', WebkitTouchCallout: 'default' }}
+                      className="text-lg sm:text-xl font-bold text-gray-900 leading-snug mb-3 line-clamp-2 select-text cursor-text"
+                    >
                       {cleanName}
                     </h2>
 

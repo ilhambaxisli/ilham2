@@ -4,6 +4,7 @@ import Header from './components/Header';
 import BottomSearchDock from './components/BottomSearchDock';
 import ProductCard, { extractProductEndDate, calculateDaysLeft } from './components/ProductCard';
 import GroupedProductCard from './components/GroupedProductCard';
+import SearchMarketResultCard from './components/SearchMarketResultCard';
 import ScannerModal from './components/ScannerModal';
 import AdminLoginModal from './components/AdminLoginModal';
 import Banner from './components/Banner';
@@ -883,6 +884,7 @@ const App: React.FC = () => {
   const [deferredCheaperOnly, setDeferredCheaperOnly] = useState(false);
   const [isProcessingCheaper, setIsProcessingCheaper] = useState(false);
   const [visibleProductCount, setVisibleProductCount] = useState(20);
+  const [expandedSearchMarkets, setExpandedSearchMarkets] = useState<Record<string, boolean>>({});
   const cheaperTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -1097,10 +1099,11 @@ const App: React.FC = () => {
     }
   }, [showFavorites]);
 
-  // Reset lazy load count on market, catalog, or search query change
+  // Reset lazy load count & expanded search markets on market, catalog, or search query change
   useEffect(() => {
     setVisibleDetailCount(24);
-  }, [activeMarketId, activeCatalogByMarket, debouncedSearchQuery]);
+    setExpandedSearchMarkets({});
+  }, [activeMarketId, activeCatalogByMarket, debouncedSearchQuery, debouncedMaxPrice]);
 
   // IntersectionObserver for lazy loading products as user scrolls down
   useEffect(() => {
@@ -1927,6 +1930,105 @@ const App: React.FC = () => {
   const activeMarketProducts = activeMarketCatalog ? (activeMarketCatalog.products || []) : (activeMarketObj?.products || []);
   const activeMarketFilteredProducts = activeMarketProducts.filter(filterProductForDetail);
 
+  // Non-visual SEO metadata, canonical URL, OpenGraph & Schema.org JSON-LD synchronization
+  useEffect(() => {
+    const baseTitle = 'endirim.net – Market Endirimləri və Qiymət Müqayisəsi';
+    const baseDescription = 'Oba, Araz, Bravo, Bazarstore, Rahat, Bolmart və digər marketlərin endirim kataloqlarını izləyin, ərzaq qiymətlərini müqayisə edib qənaət edin.';
+
+    let pageTitle = baseTitle;
+    let pageDescription = baseDescription;
+
+    if (viewProduct?.product) {
+      const pName = viewProduct.product.productName;
+      const mName = viewProduct.marketName;
+      pageTitle = `${pName} (${viewProduct.product.newPrice} ₼) – ${mName} | endirim.net`;
+      pageDescription = `${mName} mağazasında ${pName} endirimli qiyməti ${viewProduct.product.newPrice} ₼. Digər marketlərlə qiyməti müqayisə edin.`;
+    } else if (debouncedSearchQuery.trim().length > 0) {
+      const q = debouncedSearchQuery.trim();
+      pageTitle = `«${q}» axtarış nəticələri – endirim.net`;
+      pageDescription = `«${q}» üzrə Oba, Araz, Bravo, Bazarstore və digər marketlərdəki ən sərfəli endirim qiymətlərini müqayisə edin.`;
+    } else if (showCheaperOnly) {
+      pageTitle = 'Fürsətlər – Ən Ucuz Market Qiymətləri | endirim.net';
+      pageDescription = 'Müxtəlif marketlər arasında eyni məhsulların ən sərfəli qiymətlərini və endirim fürsətlərini müqayisə edin.';
+    } else if (showFavorites) {
+      pageTitle = 'Seçilənlər – endirim.net';
+      pageDescription = 'Yadda saxladığınız endirimli məhsulları bir yerdə izləyin.';
+    } else if (activeMarketObj) {
+      pageTitle = `${activeMarketObj.name} Endirim Kataloqu – endirim.net`;
+      pageDescription = `${activeMarketObj.name} üzrə ${activeMarketFilteredProducts.length} endirimli məhsulu və aktual kampaniya qiymətlərini izləyin.`;
+    }
+
+    document.title = pageTitle;
+
+    const upsertMeta = (attr: 'name' | 'property', key: string, content: string) => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+
+    const canonicalUrl = `${window.location.origin}${window.location.pathname}`;
+    let canonicalLink = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonicalLink) {
+      canonicalLink = document.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.setAttribute('href', canonicalUrl);
+
+    upsertMeta('name', 'description', pageDescription);
+    upsertMeta('property', 'og:url', canonicalUrl);
+    upsertMeta('property', 'og:title', pageTitle);
+    upsertMeta('property', 'og:description', pageDescription);
+    upsertMeta('name', 'twitter:title', pageTitle);
+    upsertMeta('name', 'twitter:description', pageDescription);
+
+    let ldScript = document.getElementById('dynamic-seo-jsonld') as HTMLScriptElement | null;
+    if (!ldScript) {
+      ldScript = document.createElement('script');
+      ldScript.id = 'dynamic-seo-jsonld';
+      ldScript.type = 'application/ld+json';
+      document.head.appendChild(ldScript);
+    }
+
+    const structuredData = viewProduct?.product
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: viewProduct.product.productName,
+          category: viewProduct.product.category,
+          offers: {
+            '@type': 'Offer',
+            price: String(viewProduct.product.newPrice).replace(',', '.').replace(/[^0-9.]/g, '') || '0',
+            priceCurrency: 'AZN',
+            seller: {
+              '@type': 'Organization',
+              name: viewProduct.marketName
+            }
+          }
+        }
+      : {
+          '@context': 'https://schema.org',
+          '@type': 'CollectionPage',
+          name: pageTitle,
+          description: pageDescription,
+          url: canonicalUrl,
+          inLanguage: 'az'
+        };
+
+    ldScript.textContent = JSON.stringify(structuredData);
+  }, [
+    viewProduct,
+    debouncedSearchQuery,
+    showCheaperOnly,
+    showFavorites,
+    activeMarketObj,
+    activeMarketFilteredProducts.length
+  ]);
+
   return (
     <>
       {isLoading && <CartLoading />}
@@ -2194,6 +2296,7 @@ const App: React.FC = () => {
 
         <div className="max-w-7xl mx-auto w-full px-2 sm:px-4 md:px-6 pt-1.5 pb-6 md:pt-3 md:pb-8">
           <main className="w-full">
+            <h1 className="sr-only">endirim.net – Market Endirimləri və Qiymət Müqayisəsi</h1>
             {!showFavorites && (banner1.isVisible || isAdmin) && (
               <div className="xl:hidden mb-4">
                 <Banner banner={banner1} isAdmin={isAdmin} onEdit={() => { setActiveBannerId('banner-1'); setIsBannerModalOpen(true); }} variant="horizontal" />
@@ -2412,62 +2515,35 @@ const App: React.FC = () => {
                             return filteredMarketData.map((market) => {
                               const marketEndDate = market.catalogs?.[0]?.endDate;
                               return (
-                                <div key={market.id} className="bg-white rounded-2xl p-2 sm:p-5 border border-gray-100 shadow-xs mb-5">
-                                    {/* Sticky Market Header in search results */}
-                                    <div 
-                                      style={{ top: `${stickyHeaderHeight}px` }}
-                                      className="sticky z-20 bg-white/95 backdrop-blur-md -mx-2 sm:-mx-5 px-3 sm:px-5 py-2.5 mb-4 border-b border-gray-100 flex items-center justify-between shadow-2xs transition-[top] duration-150 rounded-t-2xl"
-                                    >
-                                      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
-                                              {market.logoUrl ? <img src={market.logoUrl} alt={market.name} className="w-full h-full object-contain p-1" /> : <span className={`text-${market.themeColor}-700 font-bold text-sm sm:text-base`}>{market.logoPlaceholder}</span>}
-                                          </div>
-                                          <div className="min-w-0">
-                                              <h3 className="text-base sm:text-lg font-bold text-gray-900 truncate tracking-tight">{market.name}</h3>
-                                              <p className="text-[10px] sm:text-xs text-gray-400 font-medium">Axtarış üzrə market nəticələri</p>
-                                          </div>
-                                      </div>
-                                      <span className="text-xs sm:text-sm font-bold bg-gray-100 text-gray-600 px-2.5 sm:px-3 py-1 rounded-full shrink-0">
-                                        {market.filteredProducts.length} məhsul
-                                      </span>
-                                    </div>
-                                    <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4'}>
-                                    {market.filteredProducts.slice(0, visibleProductCount).map((product, index) => {
-                                        const fav = isFavorite(product.productName || '', market.id);
-                                        return (
-                                          <ProductCard 
-                                            key={`${market.id}-${product.productName}-${index}`} 
-                                            product={product} 
-                                            accentColor={market.themeColor} 
-                                            catalogEndDate={marketEndDate}
-                                            isAdmin={isAdmin} 
-                                            variant="compact" 
-                                            isListMode={productViewMode === 'list'}
-                                            isThreeColMobile={productViewMode === 'grid'}
-                                            hasCheaperAlternative={(product as any)._hasCheaper} 
-                                            onClick={() => {
-                                              if (!isAdmin) {
-                                                const clickedIdx = allSearchModalList.findIndex(
-                                                  item => item.product === product && item.marketId === market.id
-                                                );
-                                                setViewProduct({
-                                                  product,
-                                                  marketName: market.name,
-                                                  marketId: market.id,
-                                                  catalogEndDate: marketEndDate,
-                                                  productList: allSearchModalList,
-                                                  currentIndex: clickedIdx >= 0 ? clickedIdx : 0
-                                                });
-                                              }
-                                            }} 
-                                            onEdit={() => handleEditFromSearch(product, market.id)} 
-                                            isFavorite={fav} 
-                                            onToggleFavorite={() => toggleFavorite(product, market.id)} 
-                                          />
-                                        );
-                                    })}
-                                    </div>
-                                </div>
+                                <SearchMarketResultCard
+                                  key={market.id}
+                                  market={market}
+                                  filteredProducts={market.filteredProducts}
+                                  isExpanded={Boolean(expandedSearchMarkets[market.id])}
+                                  onExpand={() => setExpandedSearchMarkets(prev => ({ ...prev, [market.id]: true }))}
+                                  onCollapse={() => setExpandedSearchMarkets(prev => ({ ...prev, [market.id]: false }))}
+                                  stickyHeaderHeight={stickyHeaderHeight}
+                                  productViewMode={productViewMode}
+                                  isAdmin={isAdmin}
+                                  isFavorite={isFavorite}
+                                  onToggleFavorite={toggleFavorite}
+                                  onProductClick={(product) => {
+                                    if (!isAdmin) {
+                                      const clickedIdx = allSearchModalList.findIndex(
+                                        item => item.product === product && item.marketId === market.id
+                                      );
+                                      setViewProduct({
+                                        product,
+                                        marketName: market.name,
+                                        marketId: market.id,
+                                        catalogEndDate: marketEndDate,
+                                        productList: allSearchModalList,
+                                        currentIndex: clickedIdx >= 0 ? clickedIdx : 0
+                                      });
+                                    }
+                                  }}
+                                  onEditProduct={(product) => handleEditFromSearch(product, market.id)}
+                                />
                               );
                             });
                         })()}
@@ -2476,7 +2552,7 @@ const App: React.FC = () => {
                 ) : (
                   <>
                     {activeMarketId === null ? (
-                      <div className="space-y-6 sm:space-y-8 animate-[fadeIn_0.4s_ease-out] max-w-2xl sm:max-w-3xl mx-auto">
+                      <div className="space-y-4 sm:space-y-5 animate-[fadeIn_0.4s_ease-out] max-w-2xl sm:max-w-3xl mx-auto">
                         {/* Horizontally scrollable row of featured products: 1 product from each market */}
                         {sampleFeaturedProducts.length > 0 && (
                           <div className="space-y-2">
@@ -2598,6 +2674,24 @@ const App: React.FC = () => {
                             </div>
                           </div>
                         )}
+
+                        {/* Quick-Search Row below sample products */}
+                        <div className="flex flex-wrap items-center gap-2 px-0.5">
+                          {['yağ', 'kolbasa', 'cips'].map((term, idx) => {
+                            const tagColor = CATEGORY_TAG_COLORS[idx % CATEGORY_TAG_COLORS.length] || CATEGORY_TAG_COLORS[0];
+                            return (
+                              <button
+                                key={term}
+                                type="button"
+                                onClick={() => handleQuickSearch(term)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs sm:text-[13px] font-bold transition-all active:scale-95 cursor-pointer select-none shadow-2xs ${tagColor.chip}`}
+                              >
+                                <Clock className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                                <span className="leading-none">{term}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
 
                         {/* Markets List - Alt alta (vertically stacked) with icon, name, and green (active) or gray (expired) product count */}
                         <div className="flex flex-col gap-2 sm:gap-2.5">

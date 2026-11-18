@@ -66,7 +66,8 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
   return (
     <div 
       onClick={onClick}
-      className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg border border-gray-100 transition-all duration-300 flex flex-col group relative cursor-pointer"
+      style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+      className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg border border-gray-100 transition-all duration-300 flex flex-col group relative cursor-pointer select-none"
     >
       {/* Saving Badge */}
       {saving > 0 && (
