@@ -4,11 +4,11 @@ import {
   ArrowLeft, 
   ChevronUp, 
   ChevronDown, 
+  ChevronRight,
   TrendingDown, 
   Clock, 
   ArrowRight,
   Heart,
-  RotateCcw,
   ShoppingBag
 } from 'lucide-react';
 import { DiscountProduct, MarketData } from '../types';
@@ -56,27 +56,23 @@ interface ProductDetailModalContentProps extends ProductDetailModalProps {
   items: ModalProductItem[];
 }
 
-interface ZoomableProductImageProps {
+interface ProductImageSlideProps {
   src: string;
   fallbackSrc?: string;
   secondaryFallbackSrc?: string;
   alt: string;
   isExpired: boolean;
-  isActiveSlide: boolean;
-  children?: (isZoomed: boolean) => React.ReactNode;
+  children?: React.ReactNode;
 }
 
-const ZoomableProductImage: React.FC<ZoomableProductImageProps> = ({
+const ProductImageSlide: React.FC<ProductImageSlideProps> = ({
   src,
   fallbackSrc,
   secondaryFallbackSrc,
   alt,
   isExpired,
-  isActiveSlide,
   children,
 }) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
   const [fallbackStep, setFallbackStep] = useState<0 | 1 | 2 | 3>(0);
 
   useEffect(() => {
@@ -91,324 +87,14 @@ const ZoomableProductImage: React.FC<ZoomableProductImageProps> = ({
         ? (secondaryFallbackSrc || fallbackSrc || src)
         : '';
 
-  const [transform, setTransform] = useState<{
-    scale: number;
-    tx: number;
-    ty: number;
-    animating: boolean;
-  }>({ scale: 1, tx: 0, ty: 0, animating: false });
-
-  const stateRef = useRef<{ scale: number; tx: number; ty: number }>({
-    scale: 1,
-    tx: 0,
-    ty: 0,
-  });
-
-  const gestureRef = useRef<{
-    mode: 'idle' | 'pinch' | 'pan' | 'mouse-pan';
-    startDist: number;
-    startScale: number;
-    startTx: number;
-    startTy: number;
-    startMidX: number;
-    startMidY: number;
-    panStartX: number;
-    panStartY: number;
-    didPinch: boolean;
-    lastTapTime: number;
-    tapStart: { x: number; y: number; time: number } | null;
-  }>({
-    mode: 'idle',
-    startDist: 0,
-    startScale: 1,
-    startTx: 0,
-    startTy: 0,
-    startMidX: 0,
-    startMidY: 0,
-    panStartX: 0,
-    panStartY: 0,
-    didPinch: false,
-    lastTapTime: 0,
-    tapStart: null,
-  });
-
-  const clampPan = useCallback((tx: number, ty: number, scale: number) => {
-    if (scale <= 1.02) return { tx: 0, ty: 0 };
-    const container = containerRef.current;
-    const img = imgRef.current;
-    if (!container || !img) return { tx, ty };
-    const cw = container.clientWidth || 320;
-    const ch = container.clientHeight || 160;
-    const iw = img.offsetWidth || 136;
-    const ih = img.offsetHeight || 136;
-
-    const maxTx = Math.abs(iw * scale - cw) / 2;
-    const maxTy = Math.abs(ih * scale - ch) / 2;
-
-    return {
-      tx: Math.max(-maxTx, Math.min(maxTx, tx)),
-      ty: Math.max(-maxTy, Math.min(maxTy, ty)),
-    };
-  }, []);
-
-  const applyTransform = useCallback((scale: number, tx: number, ty: number, animating = false) => {
-    stateRef.current = { scale, tx, ty };
-    setTransform({ scale, tx, ty, animating });
-  }, []);
-
-  const resetZoom = useCallback(() => {
-    applyTransform(1, 0, 0, true);
-  }, [applyTransform]);
-
-  // Reset zoom when switching slides or product image changes
-  useEffect(() => {
-    if (!isActiveSlide) {
-      stateRef.current = { scale: 1, tx: 0, ty: 0 };
-      setTransform({ scale: 1, tx: 0, ty: 0, animating: false });
-    }
-  }, [isActiveSlide, src]);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const getTouchPoint = (clientX: number, clientY: number) => {
-      const rect = el.getBoundingClientRect();
-      return {
-        x: clientX - rect.left - rect.width / 2,
-        y: clientY - rect.top - rect.height / 2,
-      };
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest('button')) return;
-
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        e.stopPropagation();
-        const t0 = e.touches[0];
-        const t1 = e.touches[1];
-        const dist = Math.max(10, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
-        const mid = getTouchPoint((t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2);
-        const g = gestureRef.current;
-        g.mode = 'pinch';
-        g.startDist = dist;
-        g.startScale = stateRef.current.scale;
-        g.startTx = stateRef.current.tx;
-        g.startTy = stateRef.current.ty;
-        g.startMidX = mid.x;
-        g.startMidY = mid.y;
-        g.didPinch = true;
-        g.tapStart = null;
-        return;
-      }
-
-      if (e.touches.length === 1 && stateRef.current.scale > 1.02) {
-        e.preventDefault();
-        e.stopPropagation();
-        const t0 = e.touches[0];
-        const g = gestureRef.current;
-        g.mode = 'pan';
-        g.panStartX = t0.clientX;
-        g.panStartY = t0.clientY;
-        g.startTx = stateRef.current.tx;
-        g.startTy = stateRef.current.ty;
-        g.startScale = stateRef.current.scale;
-        g.didPinch = false;
-        g.tapStart = { x: t0.clientX, y: t0.clientY, time: Date.now() };
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      const g = gestureRef.current;
-
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        e.stopPropagation();
-        const t0 = e.touches[0];
-        const t1 = e.touches[1];
-        const dist = Math.max(10, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
-        const mid = getTouchPoint((t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2);
-
-        if (g.mode !== 'pinch') {
-          g.mode = 'pinch';
-          g.startDist = dist;
-          g.startScale = stateRef.current.scale;
-          g.startTx = stateRef.current.tx;
-          g.startTy = stateRef.current.ty;
-          g.startMidX = mid.x;
-          g.startMidY = mid.y;
-          g.didPinch = true;
-        }
-
-        const nextScale = Math.max(0.9, Math.min(4.2, g.startScale * (dist / g.startDist)));
-        const ratio = nextScale / g.startScale;
-        const rawTx = mid.x - ratio * (g.startMidX - g.startTx);
-        const rawTy = mid.y - ratio * (g.startMidY - g.startTy);
-        const { tx, ty } = clampPan(rawTx, rawTy, nextScale);
-        applyTransform(nextScale, tx, ty, false);
-        return;
-      }
-
-      if (e.touches.length === 1 && g.mode === 'pan' && stateRef.current.scale > 1.02) {
-        e.preventDefault();
-        e.stopPropagation();
-        const t0 = e.touches[0];
-        const dx = t0.clientX - g.panStartX;
-        const dy = t0.clientY - g.panStartY;
-        const { tx, ty } = clampPan(g.startTx + dx, g.startTy + dy, stateRef.current.scale);
-        applyTransform(stateRef.current.scale, tx, ty, false);
-      }
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      const g = gestureRef.current;
-      if (g.mode === 'idle' && !g.didPinch) return;
-
-      if (g.didPinch || stateRef.current.scale > 1.02) {
-        e.stopPropagation();
-      }
-
-      // Transition smoothly from 2-finger pinch to 1-finger pan if 1 finger remains on screen
-      if (e.touches.length === 1 && stateRef.current.scale > 1.05) {
-        const t0 = e.touches[0];
-        g.mode = 'pan';
-        g.panStartX = t0.clientX;
-        g.panStartY = t0.clientY;
-        g.startTx = stateRef.current.tx;
-        g.startTy = stateRef.current.ty;
-        g.tapStart = null;
-        return;
-      }
-
-      if (e.touches.length === 0) {
-        // Double-tap while zoomed resets back to 1x
-        if (g.mode === 'pan' && g.tapStart && e.changedTouches.length > 0) {
-          const touch = e.changedTouches[0];
-          const dx = Math.abs(touch.clientX - g.tapStart.x);
-          const dy = Math.abs(touch.clientY - g.tapStart.y);
-          const dt = Date.now() - g.tapStart.time;
-          if (dx < 12 && dy < 12 && dt < 260) {
-            const now = Date.now();
-            if (now - g.lastTapTime < 330) {
-              g.lastTapTime = 0;
-              g.mode = 'idle';
-              g.didPinch = false;
-              g.tapStart = null;
-              applyTransform(1, 0, 0, true);
-              return;
-            }
-            g.lastTapTime = now;
-          }
-        }
-
-        g.mode = 'idle';
-        g.didPinch = false;
-        g.tapStart = null;
-
-        if (stateRef.current.scale < 1.05) {
-          applyTransform(1, 0, 0, true);
-        } else if (stateRef.current.scale > 4) {
-          const { tx, ty } = clampPan(stateRef.current.tx, stateRef.current.ty, 4);
-          applyTransform(4, tx, ty, true);
-        }
-      }
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      // Support laptop trackpad 2-finger pinch (browsers dispatch wheel + ctrlKey)
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const pt = getTouchPoint(e.clientX, e.clientY);
-      const curScale = stateRef.current.scale;
-      const nextScale = Math.max(1, Math.min(4, curScale * Math.exp(-e.deltaY * 0.01)));
-      if (nextScale <= 1.02) {
-        applyTransform(1, 0, 0, true);
-        return;
-      }
-      const ratio = nextScale / curScale;
-      const rawTx = pt.x - ratio * (pt.x - stateRef.current.tx);
-      const rawTy = pt.y - ratio * (pt.y - stateRef.current.ty);
-      const { tx, ty } = clampPan(rawTx, rawTy, nextScale);
-      applyTransform(nextScale, tx, ty, false);
-    };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: false });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: false });
-    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
-    el.addEventListener('wheel', onWheel, { passive: false });
-
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
-      el.removeEventListener('wheel', onWheel);
-    };
-  }, [applyTransform, clampPan]);
-
-  // Desktop mouse drag when zoomed via trackpad pinch
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      const g = gestureRef.current;
-      if (g.mode !== 'mouse-pan') return;
-      const dx = e.clientX - g.panStartX;
-      const dy = e.clientY - g.panStartY;
-      const { tx, ty } = clampPan(g.startTx + dx, g.startTy + dy, stateRef.current.scale);
-      applyTransform(stateRef.current.scale, tx, ty, false);
-    };
-    const onMouseUp = () => {
-      if (gestureRef.current.mode === 'mouse-pan') {
-        gestureRef.current.mode = 'idle';
-      }
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [applyTransform, clampPan]);
-
-  const isZoomed = transform.scale > 1.02;
-
   return (
-    <div
-      ref={containerRef}
-      data-zoom-image="true"
-      onMouseDown={(e) => {
-        if (!isZoomed) return;
-        const target = e.target as HTMLElement | null;
-        if (target && target.closest('button')) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const g = gestureRef.current;
-        g.mode = 'mouse-pan';
-        g.panStartX = e.clientX;
-        g.panStartY = e.clientY;
-        g.startTx = stateRef.current.tx;
-        g.startTy = stateRef.current.ty;
-      }}
-      onDoubleClick={(e) => {
-        if (isZoomed) {
-          e.stopPropagation();
-          resetZoom();
-        }
-      }}
-      style={{ touchAction: isZoomed ? 'none' : 'pan-y' }}
-      className={`relative w-full h-52 sm:h-60 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden ${
-        isZoomed ? 'cursor-grab active:cursor-grabbing' : ''
-      }`}
-    >
+    <div className="relative w-full h-52 sm:h-60 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
       {fallbackStep < 3 && effectiveSrc ? (
         <img
-          ref={imgRef}
           src={effectiveSrc}
           alt={alt}
           draggable={false}
+          decoding="async"
           onError={() => {
             if (fallbackStep === 0 && fallbackSrc && fallbackSrc !== src) {
               setFallbackStep(1);
@@ -417,12 +103,6 @@ const ZoomableProductImage: React.FC<ZoomableProductImageProps> = ({
             } else {
               setFallbackStep(3);
             }
-          }}
-          style={{
-            transform: `translate3d(${transform.tx}px, ${transform.ty}px, 0) scale(${transform.scale})`,
-            transition: transform.animating ? 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
-            transformOrigin: 'center center',
-            willChange: 'transform',
           }}
           className={`w-full h-full p-2 object-contain mix-blend-multiply pointer-events-none select-none ${isExpired ? 'grayscale-[55%] opacity-85' : ''}`}
         />
@@ -434,7 +114,7 @@ const ZoomableProductImage: React.FC<ZoomableProductImageProps> = ({
       {isExpired && (
         <>
           <div className="absolute inset-0 bg-gray-200/25 pointer-events-none z-[5]" />
-          <div className={`absolute inset-0 flex items-center justify-center pointer-events-none z-[15] transition-opacity duration-150 ${isZoomed ? 'opacity-0' : ''}`}>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[15]">
             <span className="-rotate-12 select-none uppercase font-black tracking-[0.18em] text-2xl sm:text-3xl px-5 py-1.5 text-red-600/90 bg-white/85 backdrop-blur-[1px] border-[3px] border-red-600/85 rounded-xl shadow-lg leading-none">
               BİTDİ
             </span>
@@ -442,22 +122,7 @@ const ZoomableProductImage: React.FC<ZoomableProductImageProps> = ({
         </>
       )}
 
-      {isZoomed && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            resetZoom();
-          }}
-          className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1 px-2 py-1 rounded-full bg-black/70 hover:bg-black/85 text-white text-[11px] font-bold shadow-md backdrop-blur-xs transition-all active:scale-95 cursor-pointer"
-          title="Ölçünü sıfırla"
-        >
-          <RotateCcw className="w-3 h-3" />
-          <span>{transform.scale.toFixed(1)}x</span>
-        </button>
-      )}
-
-      {children?.(isZoomed)}
+      {children}
     </div>
   );
 };
@@ -468,6 +133,10 @@ interface LeftProductRailProps {
   onSelect: (targetIdx: number) => void;
 }
 
+const RAIL_INITIAL_BEFORE = 4;
+const RAIL_INITIAL_AFTER = 10;
+const RAIL_EXPAND_STEP = 12;
+
 const LeftProductRail: React.FC<LeftProductRailProps> = ({
   items,
   activeIdx,
@@ -475,38 +144,114 @@ const LeftProductRail: React.FC<LeftProductRailProps> = ({
 }) => {
   const railRef = useRef<HTMLDivElement | null>(null);
   const didMountRef = useRef<boolean>(false);
+  const pendingPrependHeightRef = useRef<number | null>(null);
 
+  const [range, setRange] = useState<{ start: number; end: number }>(() => ({
+    start: Math.max(0, activeIdx - RAIL_INITIAL_BEFORE),
+    end: Math.min(items.length, activeIdx + RAIL_INITIAL_AFTER + 1),
+  }));
+
+  // Reset window only when the product list itself changes
+  const prevItemsRef = useRef(items);
+  useEffect(() => {
+    if (prevItemsRef.current !== items) {
+      prevItemsRef.current = items;
+      didMountRef.current = false;
+      setRange({
+        start: Math.max(0, activeIdx - RAIL_INITIAL_BEFORE),
+        end: Math.min(items.length, activeIdx + RAIL_INITIAL_AFTER + 1),
+      });
+    }
+  }, [items, activeIdx]);
+
+  // Expand window on demand so activeIdx always has buffer above & below for anchored scrolling
+  useEffect(() => {
+    setRange((prev) => {
+      let nextStart = prev.start;
+      let nextEnd = prev.end;
+      if (activeIdx - 2 < prev.start) {
+        nextStart = Math.max(0, activeIdx - RAIL_INITIAL_BEFORE);
+      }
+      if (activeIdx + 4 > prev.end) {
+        nextEnd = Math.min(items.length, activeIdx + RAIL_INITIAL_AFTER + 1);
+      }
+      if (nextStart === prev.start && nextEnd === prev.end) return prev;
+      return { start: nextStart, end: nextEnd };
+    });
+  }, [activeIdx, items.length]);
+
+  // Preserve scrollTop cleanly when prepending earlier rail items above
+  useLayoutEffect(() => {
+    const rail = railRef.current;
+    if (!rail || pendingPrependHeightRef.current === null) return;
+    const prevHeight = pendingPrependHeightRef.current;
+    pendingPrependHeightRef.current = null;
+    const delta = rail.scrollHeight - prevHeight;
+    if (delta > 0) {
+      rail.scrollTop += delta;
+    }
+  }, [range.start]);
+
+  // Anchor the active green selection frame in place (slot #2) whenever activeIdx changes
+  const lastAutoScrolledIdxRef = useRef<number | null>(null);
   useEffect(() => {
     const rail = railRef.current;
     if (!rail) return;
+    if (didMountRef.current && lastAutoScrolledIdxRef.current === activeIdx) return;
 
-    const topIdx = Math.max(0, activeIdx - 1);
-    const targetBtn = rail.children[topIdx] as HTMLElement | undefined;
+    const topTargetIdx = Math.max(range.start, activeIdx - 1);
+    const targetBtn = rail.querySelector(`[data-rail-idx="${topTargetIdx}"]`) as HTMLElement | null;
     if (!targetBtn) return;
 
-    // 6px top padding (py-1.5) above children
     const targetTop = Math.max(0, targetBtn.offsetTop - 6);
-
     if (!didMountRef.current) {
       didMountRef.current = true;
+      lastAutoScrolledIdxRef.current = activeIdx;
       rail.scrollTop = targetTop;
       return;
     }
 
+    lastAutoScrolledIdxRef.current = activeIdx;
     rail.scrollTo({ top: targetTop, behavior: 'smooth' });
-  }, [activeIdx, items.length]);
+  }, [activeIdx, range.start, range.end]);
+
+  const handleRailScroll = () => {
+    const rail = railRef.current;
+    if (!rail) return;
+
+    if (range.end < items.length && rail.scrollTop + rail.clientHeight >= rail.scrollHeight - 160) {
+      setRange((prev) => ({
+        ...prev,
+        end: Math.min(items.length, prev.end + RAIL_EXPAND_STEP),
+      }));
+      return;
+    }
+
+    if (range.start > 0 && rail.scrollTop <= 120 && pendingPrependHeightRef.current === null) {
+      pendingPrependHeightRef.current = rail.scrollHeight;
+      setRange((prev) => ({
+        ...prev,
+        start: Math.max(0, prev.start - RAIL_EXPAND_STEP),
+      }));
+    }
+  };
+
+  const visibleRailItems = items.slice(range.start, range.end);
 
   return (
     <div
       ref={railRef}
       data-upcoming-strip="true"
+      onScroll={handleRailScroll}
       onDoubleClick={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
       onTouchMove={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
       className="relative w-[70px] sm:w-[78px] h-full shrink-0 border-r border-gray-100 bg-gray-50/75 overflow-y-auto overscroll-y-contain scrollbar-hide py-1.5 px-1 flex flex-col gap-1.5 touch-pan-y"
     >
-      {items.map((railItem, targetIdx) => {
+      {visibleRailItems.map((railItem, offsetIdx) => {
+        const targetIdx = range.start + offsetIdx;
         const railProd = railItem.product;
         const { cleanName: railCleanName } = extractQuantityAndCleanName(railProd.productName);
         const railCountdown = calculateDaysLeft(extractProductEndDate(railProd, railItem.catalogEndDate));
@@ -519,6 +264,7 @@ const LeftProductRail: React.FC<LeftProductRailProps> = ({
         return (
           <button
             key={`rail-${targetIdx}`}
+            data-rail-idx={targetIdx}
             type="button"
             onClick={(e) => {
               e.stopPropagation();
@@ -536,6 +282,7 @@ const LeftProductRail: React.FC<LeftProductRailProps> = ({
                 src={railImgUrl}
                 alt={railCleanName}
                 loading="lazy"
+                decoding="async"
                 draggable={false}
                 onError={(e) => {
                   if (e.currentTarget.dataset.fallbackApplied !== '1') {
@@ -570,6 +317,60 @@ const LeftProductRail: React.FC<LeftProductRailProps> = ({
   );
 };
 
+interface CachedPriceEntry {
+  marketId: string;
+  marketName: string;
+  logoUrl?: string;
+  logoPlaceholder: string;
+  themeColor: string;
+  price: number;
+  product: DiscountProduct;
+  catalogEndDate?: string;
+}
+
+const parsePriceNumberFast = (val: any): number => {
+  if (val === null || val === undefined) return NaN;
+  if (typeof val === 'number') return isNaN(val) ? NaN : val;
+  const str = String(val).replace(',', '.').replace(/[^0-9.]/g, '');
+  return parseFloat(str);
+};
+
+const marketPriceIndexCache = new WeakMap<MarketData[], Map<string, CachedPriceEntry[]>>();
+
+const getOrBuildMarketPriceIndex = (allMarkets: MarketData[]): Map<string, CachedPriceEntry[]> => {
+  const cached = marketPriceIndexCache.get(allMarkets);
+  if (cached) return cached;
+
+  const map = new Map<string, CachedPriceEntry[]>();
+  allMarkets.forEach(market => {
+    const catalogs = market.catalogs && market.catalogs.length > 0
+      ? market.catalogs
+      : [{ endDate: undefined, products: market.products || [] }];
+    catalogs.forEach(cat => {
+      (cat.products || []).forEach(prod => {
+        const key = (prod.productName || '').trim().toLowerCase();
+        if (!key) return;
+        const price = parsePriceNumberFast(prod.newPrice);
+        if (isNaN(price)) return;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push({
+          marketId: market.id,
+          marketName: market.name,
+          logoUrl: market.logoUrl,
+          logoPlaceholder: market.logoPlaceholder,
+          themeColor: market.themeColor,
+          price,
+          product: prod,
+          catalogEndDate: cat.endDate
+        });
+      });
+    });
+  });
+
+  marketPriceIndexCache.set(allMarkets, map);
+  return map;
+};
+
 const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   items,
   onClose,
@@ -593,29 +394,58 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   const clampedPropIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), currentIndex));
 
   const [activeIdx, setActiveIdx] = useState<number>(clampedPropIdx);
-  const [jumpTargetIdx, setJumpTargetIdx] = useState<number | null>(null);
   const [burstSlideIdx, setBurstSlideIdx] = useState<number | null>(null);
   const [heartBurstPhase, setHeartBurstPhase] = useState<'hidden' | 'pop' | 'fade'>('hidden');
-  const [isMarketDropdownOpen, setIsMarketDropdownOpen] = useState<boolean>(false);
   const [quickOpportunityItem, setQuickOpportunityItem] = useState<OpportunityItem | null>(null);
 
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const modalWrapperRef = useRef<HTMLDivElement | null>(null);
+  const modalShellRef = useRef<HTMLDivElement | null>(null);
+  const modalZoomRef = useRef<{
+    active: boolean;
+    mode: 'idle' | 'pinch' | 'hold';
+    scale: number;
+    tx: number;
+    ty: number;
+    startDist: number;
+    startScale: number;
+    startTx: number;
+    startTy: number;
+    startMidX: number;
+    startMidY: number;
+    holdStartX: number;
+    holdStartY: number;
+    wheelResetTimer: ReturnType<typeof setTimeout> | null;
+  }>({
+    active: false,
+    mode: 'idle',
+    scale: 1,
+    tx: 0,
+    ty: 0,
+    startDist: 0,
+    startScale: 1,
+    startTx: 0,
+    startTy: 0,
+    startMidX: 0,
+    startMidY: 0,
+    holdStartX: 0,
+    holdStartY: 0,
+    wheelResetTimer: null,
+  });
+
+  const deckRef = useRef<HTMLDivElement | null>(null);
   const activeIdxRef = useRef<number>(clampedPropIdx);
   const targetScrollIdxRef = useRef<number>(clampedPropIdx);
   const prevItemsRef = useRef<ModalProductItem[]>(items);
   const needsScrollSyncRef = useRef<boolean>(true);
   const userInteractedRef = useRef<boolean>(false);
   const isProgrammaticScrollRef = useRef<boolean>(true);
+  const lastReportedIdxRef = useRef<number | null>(null);
   const lastTapTimeRef = useRef<number>(0);
   const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTouchTimeRef = useRef<number>(0);
   const burstTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const isNativeSmoothScrollRef = useRef<boolean>(false);
-  const nativeScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDirectJumpRef = useRef<number | null>(null);
-  const animTargetIdxRef = useRef<number>(clampedPropIdx);
 
-  // Lock background page scroll without collapsing window.scrollY via position: fixed (prevents scroll reset on close/history.go)
+  // Lock background page scroll without collapsing window.scrollY
   useLayoutEffect(() => {
     const savedScrollY = window.scrollY;
     const html = document.documentElement;
@@ -642,7 +472,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   }, []);
 
   const snapToSlideInstant = useCallback((idx: number): boolean => {
-    const el = scrollerRef.current;
+    const el = deckRef.current;
     if (!el || el.clientHeight <= 0) return false;
     const targetSlide = el.children[idx] as HTMLElement | undefined;
     if (idx > 0 && (!targetSlide || targetSlide.offsetTop <= 0)) {
@@ -657,11 +487,13 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     return Math.abs(el.scrollTop - targetTop) <= 4;
   }, []);
 
-  // Snap scroller synchronously on mount or when product list / external index changes; StrictMode-safe via needsScrollSyncRef
+  // Snap scroller synchronously on mount or when external index/items change (never echo back our own onSelectIndex)
   useLayoutEffect(() => {
-    const el = scrollerRef.current;
+    const el = deckRef.current;
     const listChanged = prevItemsRef.current !== items;
-    const indexChangedExternally = clampedPropIdx !== activeIdxRef.current;
+    const indexChangedExternally =
+      clampedPropIdx !== lastReportedIdxRef.current &&
+      clampedPropIdx !== activeIdxRef.current;
 
     if (listChanged || indexChangedExternally) {
       needsScrollSyncRef.current = true;
@@ -674,8 +506,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     isProgrammaticScrollRef.current = true;
     targetScrollIdxRef.current = clampedPropIdx;
     activeIdxRef.current = clampedPropIdx;
+    lastReportedIdxRef.current = clampedPropIdx;
     setActiveIdx(clampedPropIdx);
-    setIsMarketDropdownOpen(false);
 
     snapToSlideInstant(clampedPropIdx);
 
@@ -696,8 +528,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       totalFrames += 1;
       stableFrames = ok ? stableFrames + 1 : 0;
 
-      // Require multiple consecutive confirmed frames so Tailwind CDN async style injection cannot knock scrollTop back to 0
-      if ((stableFrames < 5 && totalFrames < 30)) {
+      if (stableFrames < 5 && totalFrames < 30) {
         rafId = requestAnimationFrame(verifyPosition);
       } else {
         needsScrollSyncRef.current = false;
@@ -733,147 +564,200 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   useEffect(() => {
     return () => {
       burstTimersRef.current.forEach(clearTimeout);
-      if (nativeScrollTimerRef.current !== null) {
-        clearTimeout(nativeScrollTimerRef.current);
+      if (modalZoomRef.current.wheelResetTimer !== null) {
+        clearTimeout(modalZoomRef.current.wheelResetTimer);
       }
     };
   }, []);
 
-  const finishNativeSmoothScroll = useCallback(() => {
-    if (nativeScrollTimerRef.current !== null) {
-      clearTimeout(nativeScrollTimerRef.current);
-      nativeScrollTimerRef.current = null;
-    }
-    if (isNativeSmoothScrollRef.current) {
-      isNativeSmoothScrollRef.current = false;
-      setJumpTargetIdx(null);
-      const el = scrollerRef.current;
-      if (el) {
-        el.style.scrollSnapType = '';
-      }
-    }
-  }, []);
-
-  const cancelSmoothScroll = useCallback(() => {
-    finishNativeSmoothScroll();
-  }, [finishNativeSmoothScroll]);
-
-  // Listen for native scrollend to restore CSS scroll-snap immediately when smooth scroll finishes
+  // Whole-modal 2-finger pinch-to-zoom anywhere on the detail window; auto-resets cleanly when fingers are released
   useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const onScrollEnd = () => {
-      if (isNativeSmoothScrollRef.current) {
-        finishNativeSmoothScroll();
+    const shell = modalShellRef.current;
+    if (!shell) return;
+
+    const applyModalZoom = (scale: number, tx: number, ty: number, animate: boolean) => {
+      const z = modalZoomRef.current;
+      z.scale = scale;
+      z.tx = tx;
+      z.ty = ty;
+      shell.style.transition = animate ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+      shell.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`;
+    };
+
+    const getCenterPoint = (clientX: number, clientY: number) => {
+      const wrapper = modalWrapperRef.current || shell;
+      const rect = wrapper.getBoundingClientRect();
+      return {
+        x: clientX - (rect.left + rect.width / 2),
+        y: clientY - (rect.top + rect.height / 2),
+      };
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        tapStartRef.current = null;
+        if (deckRef.current) {
+          deckRef.current.style.overflowY = 'hidden';
+        }
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.max(10, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+        const mid = getCenterPoint((t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2);
+        const z = modalZoomRef.current;
+        z.active = true;
+        z.mode = 'pinch';
+        z.startDist = dist;
+        z.startScale = z.scale;
+        z.startTx = z.tx;
+        z.startTy = z.ty;
+        z.startMidX = mid.x;
+        z.startMidY = mid.y;
       }
     };
-    el.addEventListener('scrollend', onScrollEnd);
-    return () => el.removeEventListener('scrollend', onScrollEnd);
-  }, [finishNativeSmoothScroll]);
+
+    const onTouchMove = (e: TouchEvent) => {
+      const z = modalZoomRef.current;
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.max(10, Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY));
+        const mid = getCenterPoint((t0.clientX + t1.clientX) / 2, (t0.clientY + t1.clientY) / 2);
+
+        if (z.mode !== 'pinch') {
+          z.active = true;
+          z.mode = 'pinch';
+          z.startDist = dist;
+          z.startScale = z.scale;
+          z.startTx = z.tx;
+          z.startTy = z.ty;
+          z.startMidX = mid.x;
+          z.startMidY = mid.y;
+        }
+
+        const nextScale = Math.max(0.9, Math.min(3.6, z.startScale * (dist / z.startDist)));
+        const ratio = nextScale / z.startScale;
+        const tx = mid.x - ratio * (z.startMidX - z.startTx);
+        const ty = mid.y - ratio * (z.startMidY - z.startTy);
+        applyModalZoom(nextScale, tx, ty, false);
+        return;
+      }
+
+      if (e.touches.length === 1 && z.active && z.mode === 'hold') {
+        e.preventDefault();
+        e.stopPropagation();
+        const t0 = e.touches[0];
+        applyModalZoom(z.scale, z.startTx + (t0.clientX - z.holdStartX), z.startTy + (t0.clientY - z.holdStartY), false);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const z = modalZoomRef.current;
+      if (!z.active) return;
+
+      e.stopPropagation();
+      if (e.touches.length === 1) {
+        const t0 = e.touches[0];
+        z.mode = 'hold';
+        z.holdStartX = t0.clientX;
+        z.holdStartY = t0.clientY;
+        z.startTx = z.tx;
+        z.startTy = z.ty;
+        return;
+      }
+
+      if (e.touches.length === 0) {
+        z.active = false;
+        z.mode = 'idle';
+        if (deckRef.current) {
+          deckRef.current.style.overflowY = '';
+        }
+        applyModalZoom(1, 0, 0, true);
+      }
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const z = modalZoomRef.current;
+      const pt = getCenterPoint(e.clientX, e.clientY);
+      const curScale = z.scale;
+      const nextScale = Math.max(1, Math.min(3.6, curScale * Math.exp(-e.deltaY * 0.01)));
+      const ratio = nextScale / curScale;
+      const tx = pt.x - ratio * (pt.x - z.tx);
+      const ty = pt.y - ratio * (pt.y - z.ty);
+      z.active = nextScale > 1.02;
+      applyModalZoom(nextScale, tx, ty, false);
+
+      if (z.wheelResetTimer !== null) clearTimeout(z.wheelResetTimer);
+      z.wheelResetTimer = setTimeout(() => {
+        z.active = false;
+        z.mode = 'idle';
+        applyModalZoom(1, 0, 0, true);
+      }, 240);
+    };
+
+    shell.addEventListener('touchstart', onTouchStart, { passive: false, capture: true });
+    shell.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
+    shell.addEventListener('touchend', onTouchEnd, { passive: false, capture: true });
+    shell.addEventListener('touchcancel', onTouchEnd, { passive: false, capture: true });
+    shell.addEventListener('wheel', onWheel, { passive: false, capture: true });
+
+    return () => {
+      if (deckRef.current) {
+        deckRef.current.style.overflowY = '';
+      }
+      shell.removeEventListener('touchstart', onTouchStart, { capture: true });
+      shell.removeEventListener('touchmove', onTouchMove, { capture: true });
+      shell.removeEventListener('touchend', onTouchEnd, { capture: true });
+      shell.removeEventListener('touchcancel', onTouchEnd, { capture: true });
+      shell.removeEventListener('wheel', onWheel, { capture: true });
+    };
+  }, []);
 
   const markUserInteraction = useCallback(() => {
     userInteractedRef.current = true;
     isProgrammaticScrollRef.current = false;
-    pendingDirectJumpRef.current = null;
-    cancelSmoothScroll();
-  }, [cancelSmoothScroll]);
-
-  const jumpDirectToIndex = useCallback((targetIdx: number) => {
-    cancelSmoothScroll();
-    const clamped = Math.max(0, Math.min(items.length - 1, targetIdx));
-    userInteractedRef.current = true;
-    isProgrammaticScrollRef.current = true;
-    pendingDirectJumpRef.current = clamped;
-    setJumpTargetIdx(null);
-    setIsMarketDropdownOpen(false);
-    activeIdxRef.current = clamped;
-    setActiveIdx(clamped);
-    snapToSlideInstant(clamped);
-  }, [items.length, cancelSmoothScroll, snapToSlideInstant]);
-
-  useLayoutEffect(() => {
-    const target = pendingDirectJumpRef.current;
-    if (target === null) return;
-
-    snapToSlideInstant(target);
-    let cancelled = false;
-    const rafId = requestAnimationFrame(() => {
-      if (cancelled) return;
-      snapToSlideInstant(target);
-      pendingDirectJumpRef.current = null;
-      isProgrammaticScrollRef.current = false;
-      onSelectIndex?.(target);
-    });
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(rafId);
-    };
-  }, [activeIdx, snapToSlideInstant, onSelectIndex]);
+  }, []);
 
   const scrollToIndex = useCallback((targetIdx: number) => {
-    const el = scrollerRef.current;
+    const el = deckRef.current;
     if (!el) return;
-    userInteractedRef.current = true;
-    isProgrammaticScrollRef.current = false;
-    pendingDirectJumpRef.current = null;
-    if (nativeScrollTimerRef.current !== null) {
-      clearTimeout(nativeScrollTimerRef.current);
-      nativeScrollTimerRef.current = null;
-    }
-
+    markUserInteraction();
     const clamped = Math.max(0, Math.min(items.length - 1, targetIdx));
-    animTargetIdxRef.current = clamped;
+    if (Math.abs(clamped - activeIdxRef.current) > 4) {
+      activeIdxRef.current = clamped;
+      lastReportedIdxRef.current = clamped;
+      setActiveIdx(clamped);
+      onSelectIndex?.(clamped);
+      snapToSlideInstant(clamped);
+      return;
+    }
     const targetSlide = el.children[clamped] as HTMLElement | undefined;
     const targetTop = targetSlide && (clamped === 0 || targetSlide.offsetTop > 0)
       ? targetSlide.offsetTop
       : clamped * el.clientHeight;
+    el.scrollTo({
+      top: targetTop,
+      behavior: 'smooth'
+    });
+  }, [items.length, markUserInteraction, onSelectIndex, snapToSlideInstant]);
 
-    if (Math.abs(targetTop - el.scrollTop) < 2) {
-      el.scrollTop = targetTop;
-      finishNativeSmoothScroll();
-      return;
-    }
-
-    // Only pre-render distant targets outside the +/-4 mounted window so adjacent clicks stay zero-re-render
-    if (Math.abs(clamped - activeIdxRef.current) > 4) {
-      setJumpTargetIdx(clamped);
-    }
-
-    isNativeSmoothScrollRef.current = true;
-    el.style.scrollSnapType = 'none';
-    void el.scrollTop;
-    el.scrollTo({ top: targetTop, behavior: 'smooth' });
-
-    nativeScrollTimerRef.current = setTimeout(finishNativeSmoothScroll, 450);
-  }, [items.length, finishNativeSmoothScroll]);
-
-  const stepByDelta = useCallback((delta: number) => {
-    const baseIdx = isNativeSmoothScrollRef.current ? animTargetIdxRef.current : activeIdxRef.current;
-    const nextIdx = Math.max(0, Math.min(items.length - 1, baseIdx + delta));
-    if (nextIdx !== baseIdx || !isNativeSmoothScrollRef.current) {
-      scrollToIndex(nextIdx);
-    }
-  }, [items.length, scrollToIndex]);
-
-  const handleScroll = () => {
-    const el = scrollerRef.current;
+  const handleDeckScroll = () => {
+    const el = deckRef.current;
     if (!el || el.clientHeight === 0 || items.length === 0) return;
-    if (pendingDirectJumpRef.current !== null) return;
     if (isProgrammaticScrollRef.current && !userInteractedRef.current) {
       return;
-    }
-    if (isNativeSmoothScrollRef.current) {
-      if (nativeScrollTimerRef.current !== null) {
-        clearTimeout(nativeScrollTimerRef.current);
-      }
-      nativeScrollTimerRef.current = setTimeout(finishNativeSmoothScroll, 140);
     }
     const newIdx = Math.max(0, Math.min(items.length - 1, Math.round(el.scrollTop / el.clientHeight)));
     if (newIdx !== activeIdxRef.current) {
       activeIdxRef.current = newIdx;
+      lastReportedIdxRef.current = newIdx;
       setActiveIdx(newIdx);
-      setIsMarketDropdownOpen(false);
       onSelectIndex?.(newIdx);
     }
   };
@@ -885,12 +769,12 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       if (e.key === 'ArrowDown' || e.key === 'PageDown') {
         if (activeIdxRef.current < items.length - 1) {
           e.preventDefault();
-          stepByDelta(1);
+          scrollToIndex(activeIdxRef.current + 1);
         }
       } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
         if (activeIdxRef.current > 0) {
           e.preventDefault();
-          stepByDelta(-1);
+          scrollToIndex(activeIdxRef.current - 1);
         }
       } else if (e.key === 'Escape') {
         onClose();
@@ -898,61 +782,18 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items.length, stepByDelta, onClose, quickOpportunityItem]);
-
-  const parsePriceNumber = (val: any): number => {
-    if (val === null || val === undefined) return NaN;
-    if (typeof val === 'number') return isNaN(val) ? NaN : val;
-    const str = String(val).replace(',', '.').replace(/[^0-9.]/g, '');
-    return parseFloat(str);
-  };
+  }, [items.length, scrollToIndex, onClose, quickOpportunityItem]);
 
   const activeItem = items[activeIdx] || items[0] || null;
 
-  // Indexed lookup across all markets so every slide can display where a product is cheaper
+  // Module-cached WeakMap lookup (zero date parsing upfront)
   const allProductsPriceIndex = useMemo(() => {
-    const map = new Map<string, Array<{
-      marketId: string;
-      marketName: string;
-      logoUrl?: string;
-      logoPlaceholder: string;
-      themeColor: string;
-      price: number;
-      product: DiscountProduct;
-    }>>();
-
-    allMarkets.forEach(market => {
-      const catalogs = market.catalogs && market.catalogs.length > 0
-        ? market.catalogs
-        : [{ endDate: undefined, products: market.products || [] }];
-      catalogs.forEach(cat => {
-        (cat.products || []).forEach(prod => {
-          const cd = calculateDaysLeft(extractProductEndDate(prod, cat.endDate));
-          if (cd && cd.daysLeft < 0) return;
-          const key = (prod.productName || '').trim().toLowerCase();
-          if (!key) return;
-          const price = parsePriceNumber(prod.newPrice);
-          if (isNaN(price)) return;
-          if (!map.has(key)) map.set(key, []);
-          map.get(key)!.push({
-            marketId: market.id,
-            marketName: market.name,
-            logoUrl: market.logoUrl,
-            logoPlaceholder: market.logoPlaceholder,
-            themeColor: market.themeColor,
-            price,
-            product: prod
-          });
-        });
-      });
-    });
-
-    return map;
+    return getOrBuildMarketPriceIndex(allMarkets);
   }, [allMarkets]);
 
   const getCheaperAlternativesForSlide = useCallback((prod: DiscountProduct, curMarketId?: string, curMarketName?: string) => {
     const key = (prod.productName || '').trim().toLowerCase();
-    const currentPrice = parsePriceNumber(prod.newPrice);
+    const currentPrice = parsePriceNumberFast(prod.newPrice);
     if (!key || isNaN(currentPrice)) return [];
     const candidates = allProductsPriceIndex.get(key);
     if (!candidates || candidates.length === 0) return [];
@@ -974,9 +815,17 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       if (curLower && cand.marketName.trim().toLowerCase() === curLower) return;
       if (cand.price >= currentPrice) return;
       if (seenMarkets.has(cand.marketId)) return;
+      const cd = calculateDaysLeft(extractProductEndDate(cand.product, cand.catalogEndDate));
+      if (cd && cd.daysLeft < 0) return;
       seenMarkets.add(cand.marketId);
       results.push({
-        ...cand,
+        marketId: cand.marketId,
+        marketName: cand.marketName,
+        logoUrl: cand.logoUrl,
+        logoPlaceholder: cand.logoPlaceholder,
+        themeColor: cand.themeColor,
+        price: cand.price,
+        product: cand.product,
         diff: currentPrice - cand.price
       });
     });
@@ -1000,6 +849,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
     let bestImg = explicitFallbackImg;
     candidates.forEach(cand => {
+      const cd = calculateDaysLeft(extractProductEndDate(cand.product, cand.catalogEndDate));
+      if (cd && cd.daysLeft < 0) return;
       const candImg = getExplicitProductImageUrl(cand.product);
       if (!bestImg && candImg) bestImg = candImg;
       const existing = byMarket.get(cand.marketId);
@@ -1099,7 +950,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
         <button
           type="button"
           disabled={!hasPrev}
-          onClick={(e) => { e.stopPropagation(); stepByDelta(-1); }}
+          onClick={(e) => { e.stopPropagation(); scrollToIndex(activeIdx - 1); }}
           className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all ${
             hasPrev 
               ? 'bg-white hover:bg-emerald-50 text-gray-800 hover:text-emerald-700 hover:scale-110 active:scale-90 cursor-pointer border border-gray-100' 
@@ -1120,7 +971,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
         <button
           type="button"
           disabled={!hasNext}
-          onClick={(e) => { e.stopPropagation(); stepByDelta(1); }}
+          onClick={(e) => { e.stopPropagation(); scrollToIndex(activeIdx + 1); }}
           className={`w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all ${
             hasNext 
               ? 'bg-white hover:bg-emerald-50 text-gray-800 hover:text-emerald-700 hover:scale-110 active:scale-90 cursor-pointer border border-gray-100' 
@@ -1134,6 +985,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
       {/* Fixed Center Modal Shell: Header & Left Rail stay stationary while ONLY Right Product Column scrolls */}
       <div
+        ref={modalWrapperRef}
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             onClose();
@@ -1147,7 +999,9 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
           return (
             <div
+              ref={modalShellRef}
               onClick={(e) => e.stopPropagation()}
+              style={{ transformOrigin: 'center center', willChange: 'transform', touchAction: 'pan-x pan-y' }}
               className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden h-[520px] sm:h-[560px] max-h-[90dvh] z-10 border border-gray-100"
             >
               {/* Subtle Top Drag Pill */}
@@ -1168,125 +1022,59 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     </button>
                   )}
 
-                  {onSelectMarketInModal ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsMarketDropdownOpen(prev => !prev);
-                      }}
-                      className="flex items-center gap-2 min-w-0 text-left rounded-xl px-1.5 py-1 -my-1 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
-                      title="Başqa market seç"
-                    >
-                      {activeMkt?.logoUrl ? (
-                        <img 
-                          src={activeMkt.logoUrl} 
-                          alt={activeMName} 
-                          className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl bg-white p-0.5 border border-gray-200/90 shadow-2xs shrink-0" 
-                        />
-                      ) : (
-                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center border border-gray-200/90 shadow-2xs shrink-0">
-                          {activeMkt?.logoPlaceholder || activeMName?.charAt(0) || 'M'}
-                        </div>
-                      )}
-
-                      <span className="font-black text-gray-900 text-base sm:text-lg tracking-tight truncate">
-                        {activeMName}
-                      </span>
-                      <ChevronDown className={`w-4 h-4 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${isMarketDropdownOpen ? 'rotate-180 text-gray-800' : ''}`} />
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2 min-w-0">
-                      {activeMkt?.logoUrl ? (
-                        <img 
-                          src={activeMkt.logoUrl} 
-                          alt={activeMName} 
-                          className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl bg-white p-0.5 border border-gray-200/90 shadow-2xs shrink-0" 
-                        />
-                      ) : (
-                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center border border-gray-200/90 shadow-2xs shrink-0">
-                          {activeMkt?.logoPlaceholder || activeMName?.charAt(0) || 'M'}
-                        </div>
-                      )}
-
-                      <span className="font-black text-gray-900 text-base sm:text-lg tracking-tight truncate">
-                        {activeMName}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Click-outside backdrop & Simple Market Dropdown List */}
-                {isMarketDropdownOpen && onSelectMarketInModal && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-20"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsMarketDropdownOpen(false);
-                      }}
-                    />
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute left-3 top-full mt-1 w-60 sm:w-64 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-30 max-h-72 overflow-y-auto animate-[fadeIn_0.15s_ease-out]"
-                    >
-                      <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                        <span>Marketlər</span>
+                  {(() => {
+                    const targetMarketId = activeMkt?.id || activeItem?.marketId;
+                    if (onSelectMarketInModal && targetMarketId) {
+                      return (
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setIsMarketDropdownOpen(false);
+                            onSelectMarketInModal(targetMarketId);
                           }}
-                          className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                          className="flex items-center gap-2 min-w-0 text-left rounded-xl px-1.5 py-1 -my-1 hover:bg-emerald-50/70 active:bg-emerald-100/70 transition-colors cursor-pointer group"
+                          title={`${activeMName} məhsul siyahısına keç`}
                         >
-                          <X className="w-3.5 h-3.5" />
+                          {activeMkt?.logoUrl ? (
+                            <img 
+                              src={activeMkt.logoUrl} 
+                              alt={activeMName} 
+                              className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl bg-white p-0.5 border border-gray-200/90 shadow-2xs shrink-0" 
+                            />
+                          ) : (
+                            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center border border-gray-200/90 shadow-2xs shrink-0">
+                              {activeMkt?.logoPlaceholder || activeMName?.charAt(0) || 'M'}
+                            </div>
+                          )}
+
+                          <span className="font-black text-gray-900 group-hover:text-emerald-700 text-base sm:text-lg tracking-tight truncate transition-colors">
+                            {activeMName}
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 shrink-0 transition-all" />
                         </button>
+                      );
+                    }
+                    return (
+                      <div className="flex items-center gap-2 min-w-0">
+                        {activeMkt?.logoUrl ? (
+                          <img 
+                            src={activeMkt.logoUrl} 
+                            alt={activeMName} 
+                            className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl bg-white p-0.5 border border-gray-200/90 shadow-2xs shrink-0" 
+                          />
+                        ) : (
+                          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center border border-gray-200/90 shadow-2xs shrink-0">
+                            {activeMkt?.logoPlaceholder || activeMName?.charAt(0) || 'M'}
+                          </div>
+                        )}
+
+                        <span className="font-black text-gray-900 text-base sm:text-lg tracking-tight truncate">
+                          {activeMName}
+                        </span>
                       </div>
-                      {allMarkets
-                        .map((m) => {
-                          const mProds = m.catalogs && m.catalogs.length > 0
-                            ? (m.catalogs[0]?.products || [])
-                            : (m.products || []);
-                          return { market: m, count: mProds.length };
-                        })
-                        .filter(entry => entry.count > 0)
-                        .map(({ market: m, count }) => {
-                          const isCur = activeMkt?.id === m.id || m.name.trim().toLowerCase() === (activeMName || '').trim().toLowerCase();
-                          return (
-                            <button
-                              key={m.id}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsMarketDropdownOpen(false);
-                                onSelectMarketInModal(m.id);
-                              }}
-                              className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center justify-between gap-2 transition-colors cursor-pointer ${
-                                isCur
-                                  ? 'bg-gray-100 font-bold text-gray-900'
-                                  : 'text-gray-700 hover:bg-gray-50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="w-6 h-6 rounded-lg bg-white border border-gray-200/80 flex items-center justify-center overflow-hidden shrink-0">
-                                  {m.logoUrl ? (
-                                    <img src={m.logoUrl} alt={m.name} className="w-full h-full object-contain p-0.5" />
-                                  ) : (
-                                    <span className="text-emerald-700 font-bold text-[10px]">{m.logoPlaceholder}</span>
-                                  )}
-                                </div>
-                                <span className="truncate">{m.name}</span>
-                              </div>
-                              <span className="text-[10px] text-gray-500 bg-gray-100 font-semibold px-2 py-0.5 rounded-full shrink-0">
-                                {count}
-                              </span>
-                            </button>
-                          );
-                        })}
-                    </div>
-                  </>
-                )}
+                    );
+                  })()}
+                </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
                   {effectiveTotal > 0 && (
@@ -1316,21 +1104,63 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                   <LeftProductRail
                     items={items}
                     activeIdx={activeIdx}
-                    onSelect={jumpDirectToIndex}
+                    onSelect={scrollToIndex}
                   />
                 )}
 
-                {/* Native 120Hz CSS Scroll-Snap Right Product Scroller */}
+                {/* Native 120Hz CSS Scroll-Snap Vertical Feed Viewport */}
                 <div
-                  ref={scrollerRef}
-                  onScroll={handleScroll}
-                  onTouchStart={markUserInteraction}
+                  ref={deckRef}
+                  onScroll={handleDeckScroll}
                   onWheel={markUserInteraction}
                   onPointerDown={markUserInteraction}
-                  className="relative flex-1 min-w-0 h-full overflow-y-auto snap-y snap-mandatory overscroll-y-none scrollbar-hide touch-pan-y [overflow-anchor:none]"
+                  onTouchStart={(e) => {
+                    markUserInteraction();
+                    lastTouchTimeRef.current = Date.now();
+                    if (e.touches.length !== 1) {
+                      tapStartRef.current = null;
+                      return;
+                    }
+                    const target = e.target as HTMLElement | null;
+                    if (target?.closest('[data-upcoming-strip]')) return;
+                    const touch = e.touches[0];
+                    tapStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+                  }}
+                  onTouchEnd={(e) => {
+                    lastTouchTimeRef.current = Date.now();
+                    const target = e.target as HTMLElement;
+                    if (target.closest('button') || target.closest('a') || target.closest('[data-upcoming-strip]')) return;
+                    if (!tapStartRef.current) return;
+                    const touch = e.changedTouches[0];
+                    const tdx = Math.abs(touch.clientX - tapStartRef.current.x);
+                    const tdy = Math.abs(touch.clientY - tapStartRef.current.y);
+                    const tdt = Date.now() - tapStartRef.current.time;
+                    tapStartRef.current = null;
+
+                    if (tdx < 12 && tdy < 12 && tdt < 260) {
+                      const now = Date.now();
+                      if (now - lastTapTimeRef.current < 330) {
+                        lastTapTimeRef.current = 0;
+                        if (activeItem) {
+                          triggerHeartBurst(activeItem, activeIdx);
+                        }
+                      } else {
+                        lastTapTimeRef.current = now;
+                      }
+                    }
+                  }}
+                  onDoubleClick={(e) => {
+                    if (Date.now() - lastTouchTimeRef.current < 600) return;
+                    const target = e.target as HTMLElement;
+                    if (target.closest('button') || target.closest('a') || target.closest('[data-upcoming-strip]')) return;
+                    if (activeItem) {
+                      triggerHeartBurst(activeItem, activeIdx);
+                    }
+                  }}
+                  className="relative flex-1 min-w-0 h-full overflow-y-auto snap-y snap-mandatory overscroll-y-none scrollbar-hide touch-pan-y [overflow-anchor:none] bg-white select-none"
                 >
                   {items.map((item, idx) => {
-                    const isNearby = Math.abs(idx - activeIdx) <= 4 || (jumpTargetIdx !== null && Math.abs(idx - jumpTargetIdx) <= 1);
+                    const isNearby = Math.abs(idx - activeIdx) <= 2;
 
                     if (!isNearby) {
                       return (
@@ -1364,112 +1194,76 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     return (
                       <div
                         key={`slide-${idx}`}
-                        onTouchStart={(e) => {
-                          lastTouchTimeRef.current = Date.now();
-                          const touch = e.touches[0];
-                          tapStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-                        }}
-                        onTouchEnd={(e) => {
-                          lastTouchTimeRef.current = Date.now();
-                          const target = e.target as HTMLElement;
-                          if (target.closest('button') || target.closest('a') || target.closest('[data-upcoming-strip]')) return;
-                          if (!tapStartRef.current) return;
-                          const touch = e.changedTouches[0];
-                          const dx = Math.abs(touch.clientX - tapStartRef.current.x);
-                          const dy = Math.abs(touch.clientY - tapStartRef.current.y);
-                          const dt = Date.now() - tapStartRef.current.time;
-                          tapStartRef.current = null;
-
-                          if (dx < 12 && dy < 12 && dt < 260) {
-                            const now = Date.now();
-                            if (now - lastTapTimeRef.current < 330) {
-                              lastTapTimeRef.current = 0;
-                              triggerHeartBurst(item, idx);
-                            } else {
-                              lastTapTimeRef.current = now;
-                            }
-                          }
-                        }}
-                        onDoubleClick={(e) => {
-                          if (Date.now() - lastTouchTimeRef.current < 600) return;
-                          const target = e.target as HTMLElement;
-                          if (target.closest('button') || target.closest('a') || target.closest('[data-upcoming-strip]')) return;
-                          triggerHeartBurst(item, idx);
-                        }}
-                        className="w-full h-full shrink-0 snap-start snap-always flex flex-col justify-between overflow-hidden bg-white"
+                        className="relative w-full h-full shrink-0 snap-start snap-always flex flex-col justify-between overflow-hidden bg-white"
                       >
-                        {/* Product Image with 2-Finger Pinch-to-Zoom */}
-                        <ZoomableProductImage
+                        {/* Product Image */}
+                        <ProductImageSlide
                           src={imgUrl}
                           fallbackSrc={bingImgUrl300}
                           secondaryFallbackSrc={bingImgUrl200}
                           alt={cleanName}
                           isExpired={isExpired}
-                          isActiveSlide={isCurrentSlide}
                         >
-                          {(isZoomed) => (
-                            <>
-                              {/* Double-tap Center Heart Burst Animation */}
-                              {burstSlideIdx === idx && heartBurstPhase !== 'hidden' && (
-                                <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
-                                  <Heart 
-                                    className={`w-24 h-24 fill-red-500 text-red-500 drop-shadow-[0_8px_20px_rgba(239,68,68,0.45)] transition-all duration-300 ease-out ${
-                                      heartBurstPhase === 'pop' 
-                                        ? 'scale-110 opacity-100' 
-                                        : 'scale-150 opacity-0'
-                                    }`}
-                                    strokeWidth={1.5}
-                                  />
-                                </div>
-                              )}
-
-                              {/* Mobile TikTok quick up/down buttons */}
-                              <div className={`sm:hidden absolute right-1.5 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5 transition-opacity duration-150 ${isZoomed ? 'opacity-0 pointer-events-none' : ''}`}>
-                                {idx > 0 && (
-                                  <button
-                                    type="button"
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    onTouchStart={(e) => e.stopPropagation()}
-                                    onClick={(e) => { e.stopPropagation(); stepByDelta(-1); }}
-                                    className="w-7 h-7 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
-                                    title="Əvvəlki məhsul"
-                                  >
-                                    <ChevronUp className="w-4 h-4 stroke-[2.5]" />
-                                  </button>
-                                )}
-                                {idx < items.length - 1 && (
-                                  <button
-                                    type="button"
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    onTouchStart={(e) => e.stopPropagation()}
-                                    onClick={(e) => { e.stopPropagation(); stepByDelta(1); }}
-                                    className="w-7 h-7 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
-                                    title="Növbəti məhsul"
-                                  >
-                                    <ChevronDown className="w-4 h-4 stroke-[2.5]" />
-                                  </button>
-                                )}
+                          <>
+                            {/* Double-tap Center Heart Burst Animation */}
+                            {burstSlideIdx === idx && heartBurstPhase !== 'hidden' && (
+                              <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
+                                <Heart 
+                                  className={`w-24 h-24 fill-red-500 text-red-500 drop-shadow-[0_8px_20px_rgba(239,68,68,0.45)] transition-all duration-300 ease-out ${
+                                    heartBurstPhase === 'pop' 
+                                      ? 'scale-110 opacity-100' 
+                                      : 'scale-150 opacity-0'
+                                  }`}
+                                  strokeWidth={1.5}
+                                />
                               </div>
+                            )}
 
-                              {/* Discount Badge */}
-                              {p.discountPercentage && (
-                                <div className={`absolute top-2 left-2 ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold shadow-sm z-10 transition-opacity duration-150 ${isZoomed ? 'opacity-0 pointer-events-none' : ''}`}>
-                                  {p.discountPercentage}
-                                </div>
+                            {/* Mobile TikTok quick up/down buttons */}
+                            <div className="sm:hidden absolute right-1.5 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5">
+                              {idx > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); scrollToIndex(idx - 1); }}
+                                  className="w-7 h-7 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
+                                  title="Əvvəlki məhsul"
+                                >
+                                  <ChevronUp className="w-4 h-4 stroke-[2.5]" />
+                                </button>
                               )}
+                              {idx < items.length - 1 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); scrollToIndex(idx + 1); }}
+                                  className="w-7 h-7 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
+                                  title="Növbəti məhsul"
+                                >
+                                  <ChevronDown className="w-4 h-4 stroke-[2.5]" />
+                                </button>
+                              )}
+                            </div>
 
-                              {/* Quantity Badge */}
-                              {quantityBadge && (
-                                <div className={`absolute bottom-2 right-2 bg-black text-white px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-sm sm:text-base font-black shadow-lg tracking-tight leading-none transition-opacity duration-150 ${isZoomed ? 'opacity-0 pointer-events-none' : ''}`}>
-                                  {quantityBadge}
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </ZoomableProductImage>
+                            {/* Discount Badge */}
+                            {p.discountPercentage && (
+                              <div className={`absolute top-2 left-2 ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold shadow-sm z-10`}>
+                                {p.discountPercentage}
+                              </div>
+                            )}
+
+                            {/* Quantity Badge */}
+                            {quantityBadge && (
+                              <div className="absolute bottom-2 right-2 bg-black text-white px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-sm sm:text-base font-black shadow-lg tracking-tight leading-none">
+                                {quantityBadge}
+                              </div>
+                            )}
+                          </>
+                        </ProductImageSlide>
 
                         {/* Product Info Content */}
-                        <div className={`px-3 pt-2 pb-2 sm:px-4 sm:pt-2.5 sm:pb-2.5 flex-1 min-h-0 flex flex-col justify-between ${isCurrentSlide && showComparisons && comparisonData.length > 0 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}>
+                        <div
+                          data-modal-scrollable="true"
+                          className={`px-3 pt-2 pb-2 sm:px-4 sm:pt-2.5 sm:pb-2.5 flex-1 min-h-0 flex flex-col justify-between ${isCurrentSlide && showComparisons && comparisonData.length > 0 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}
+                        >
                           <div>
                             <div className="flex items-center justify-between gap-1.5 shrink-0">
                               <span className="inline-block px-1.5 sm:px-2 py-0.5 text-[9.5px] sm:text-[10.5px] font-bold text-gray-600 bg-gray-100 rounded-lg truncate">
@@ -1490,32 +1284,6 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                             </div>
 
                             <div className="mt-2 sm:mt-2.5">
-                              {(onToggleFavoriteItem || onToggleFavorite) && (
-                                <div className="flex justify-end mb-1">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onToggleFavoriteItem) {
-                                      onToggleFavoriteItem(item);
-                                    } else if (onToggleFavorite) {
-                                      onToggleFavorite();
-                                    }
-                                  }}
-                                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full shadow-sm flex items-center justify-center transition-all active:scale-90 cursor-pointer border ${
-                                    slideIsFavorite 
-                                      ? 'bg-red-50 border-red-200 text-red-500' 
-                                      : 'bg-gray-50 hover:bg-red-50/70 border-gray-200 text-gray-400 hover:text-red-500'
-                                  }`}
-                                  title={slideIsFavorite ? "Seçilənlərdən çıxar" : "Seçilənlərə əlavə et"}
-                                >
-                                  <Heart 
-                                    className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-200 ${slideIsFavorite ? 'fill-red-500 text-red-500 scale-110' : ''}`} 
-                                    strokeWidth={2.2} 
-                                  />
-                                </button>
-                              </div>
-                            )}
 
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
@@ -1535,6 +1303,30 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                   <span className="text-red-500 text-xs sm:text-sm line-through font-semibold leading-none mt-1 whitespace-nowrap">
                                     {p.oldPrice} ₼
                                   </span>
+                                )}
+                                {(onToggleFavoriteItem || onToggleFavorite) && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (onToggleFavoriteItem) {
+                                        onToggleFavoriteItem(item);
+                                      } else if (onToggleFavorite) {
+                                        onToggleFavorite();
+                                      }
+                                    }}
+                                    className="mt-1.5 p-0.5 flex items-center justify-center transition-transform duration-200 active:scale-90 cursor-pointer bg-transparent border-0"
+                                    title={slideIsFavorite ? "Seçilənlərdən çıxar" : "Seçilənlərə əlavə et"}
+                                  >
+                                    <Heart
+                                      className={`w-7 h-7 sm:w-8 sm:h-8 transition-all duration-200 ${
+                                        slideIsFavorite
+                                          ? 'fill-red-500 text-red-500 scale-110'
+                                          : 'text-gray-400 hover:text-red-500'
+                                      }`}
+                                      strokeWidth={2}
+                                    />
+                                  </button>
                                 )}
                               </div>
                             </div>

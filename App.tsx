@@ -18,7 +18,7 @@ import OpportunityDetailModal from './components/OpportunityDetailModal';
 import SocialDealsModal from './components/SocialDealsModal';
 import { MarketData, DiscountProduct, BannerData, SupabaseConfig, Catalog, FavoriteItem } from './types';
 import * as supabaseService from './services/supabase';
-import { RefreshCw, ShoppingBag, ArrowRight, Loader2, Plus, Trash2, Search, Database, Home, ChevronRight, Store, LayoutGrid, LayoutList, XCircle, ChevronUp, ChevronDown, Edit, Calendar, Clock, AlertTriangle, CheckCircle2, ShoppingCart, TrendingDown, ArrowLeft, Heart, RotateCcw, Instagram, X, Check, ChevronLeft, Sparkles, ExternalLink, Tag, Percent } from 'lucide-react';
+import { RefreshCw, ShoppingBag, ArrowRight, Loader2, Plus, Trash2, Search, Database, Home, ChevronRight, Store, Grid3x3, Grid2x2, XCircle, ChevronUp, ChevronDown, Edit, Calendar, Clock, AlertTriangle, CheckCircle2, ShoppingCart, TrendingDown, ArrowLeft, Heart, RotateCcw, Instagram, X, Check, ChevronLeft, Sparkles, ExternalLink, Tag, Percent } from 'lucide-react';
 
 const INITIAL_MARKETS: MarketData[] = [
   {
@@ -44,20 +44,14 @@ const INITIAL_MARKETS: MarketData[] = [
     logoPlaceholder: 'A',
     logoUrl: 'https://b7x9kq.arazmarket.az/storage/news/dsc_9152.jpg',
     instagramPosts: []
-  },
-  {
-    id: 'omid',
-    name: 'Omid',
-    lastUpdated: new Date().toISOString(),
-    products: [],
-    catalogs: [],
-    url: 'https://omid.az',
-    themeColor: 'indigo',
-    logoPlaceholder: 'O',
-    logoUrl: 'https://omid.az/cdn/shop/files/logo-square-bg_b02cc3d7-332a-4af5-af81-cbe0f6b16235.png?v=1742375886',
-    instagramPosts: []
   }
 ];
+
+const isOmidMarket = (market: MarketData): boolean => {
+  const id = (market.id || '').toLowerCase().trim();
+  const name = (market.name || '').toLowerCase().trim();
+  return id === 'omid' || name === 'omid' || name.includes('omid');
+};
 
 // Target order: OBA, araz, bravo, al market, tamstore, bazarstore, rahat, neptun, bolmart, ..., omid
 const getMarketSortRank = (market: MarketData): number => {
@@ -771,22 +765,6 @@ const migrateMarketData = (incomingMarkets: MarketData[]): MarketData[] => {
     return updatedMarket;
   });
 
-  const hasOmid = migrated.some(m => m.id === 'omid' || (m.name || '').toLowerCase().includes('omid'));
-  if (!hasOmid) {
-    migrated.push({
-      id: 'omid',
-      name: 'Omid',
-      lastUpdated: new Date().toISOString(),
-      products: [],
-      catalogs: [],
-      url: 'https://omid.az',
-      themeColor: 'indigo',
-      logoPlaceholder: 'O',
-      logoUrl: 'https://omid.az/cdn/shop/files/logo-square-bg_b02cc3d7-332a-4af5-af81-cbe0f6b16235.png?v=1742375886',
-      instagramPosts: []
-    });
-  }
-
   return sortMarketsByOrder(migrated);
 };
 
@@ -847,31 +825,26 @@ const App: React.FC = () => {
   const [activeCatalogByMarket, setActiveCatalogByMarket] = useState<Record<string, string>>({});
   const [visibleDetailCount, setVisibleDetailCount] = useState(24);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
-  const featuredCarouselRef = useRef<HTMLDivElement | null>(null);
+  const featuredCarouselTopRef = useRef<HTMLDivElement | null>(null);
+  const featuredCarouselBottomRef = useRef<HTMLDivElement | null>(null);
+  const marqueePauseUntilRef = useRef<{ top: number; bottom: number }>({ top: 0, bottom: 0 });
+  const marqueePointerDownRef = useRef<{ top: boolean; bottom: boolean }>({ top: false, bottom: false });
+  const marqueeStateRef = useRef<{
+    top: { pos: number; dir: 1 | -1; lastWritten: number; initialized: boolean };
+    bottom: { pos: number; dir: 1 | -1; lastWritten: number; initialized: boolean };
+  }>({
+    top: { pos: 0, dir: 1, lastWritten: 0, initialized: false },
+    bottom: { pos: 0, dir: -1, lastWritten: 0, initialized: false },
+  });
 
-  const [carouselActiveIndex, setCarouselActiveIndex] = useState(0);
-
-  const scrollFeaturedCarousel = (direction: 'left' | 'right') => {
-    if (featuredCarouselRef.current) {
-      const scrollAmount = featuredCarouselRef.current.clientWidth * 0.75;
-      featuredCarouselRef.current.scrollBy({
+  const scrollFeaturedRow = (rowKey: 'top' | 'bottom', rowRef: React.RefObject<HTMLDivElement | null>, direction: 'left' | 'right') => {
+    if (rowRef.current) {
+      marqueePauseUntilRef.current[rowKey] = performance.now() + 2800;
+      const scrollAmount = rowRef.current.clientWidth * 0.75;
+      rowRef.current.scrollBy({
         left: direction === 'left' ? -scrollAmount : scrollAmount,
         behavior: 'smooth'
       });
-    }
-  };
-
-  const handleCarouselScroll = () => {
-    if (featuredCarouselRef.current) {
-      const el = featuredCarouselRef.current;
-      const scrollLeft = el.scrollLeft;
-      const firstChild = el.firstElementChild as HTMLElement | null;
-      const secondChild = el.children[1] as HTMLElement | undefined;
-      const itemWidth = (firstChild && secondChild)
-        ? Math.max(1, secondChild.offsetLeft - firstChild.offsetLeft)
-        : (firstChild ? firstChild.offsetWidth + 8 : 110);
-      const index = Math.round(scrollLeft / itemWidth);
-      setCarouselActiveIndex(Math.max(0, index));
     }
   };
 
@@ -932,7 +905,7 @@ const App: React.FC = () => {
   const [marketToEdit, setMarketToEdit] = useState<MarketData | null>(null);
   const [productToEdit, setProductToEdit] = useState<{product: DiscountProduct, index: number, catalogId?: string} | null>(null);
   const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState(false);
-  const [productViewMode, setProductViewMode] = useState<'grid' | 'list'>('grid');
+  const [productViewMode, setProductViewMode] = useState<'grid' | 'two'>('grid');
   const [viewProduct, setViewProduct] = useState<{
     product: DiscountProduct;
     marketName: string;
@@ -1011,6 +984,27 @@ const App: React.FC = () => {
       productList: marketModalList,
       currentIndex: 0
     });
+  };
+
+  const handleNavigateToMarketFromModal = (marketId: string) => {
+    const isFromSearch = searchQuery.trim().length >= 2 || debouncedSearchQuery.trim().length >= 2;
+    if (isFromSearch) {
+      setSearchReturnState({
+        searchQuery: searchQuery || debouncedSearchQuery,
+        maxPrice: maxPrice || debouncedMaxPrice,
+        expandedSearchMarkets: { ...expandedSearchMarkets },
+        scrollY: window.scrollY
+      });
+      setSearchQuery('');
+      setDebouncedSearchQuery('');
+      setMaxPrice('');
+      setDebouncedMaxPrice('');
+      setIsSearching(false);
+    }
+    setViewProduct(null);
+    setShowFavorites(false);
+    setShowCheaperOnly(false);
+    handleSelectMarket(marketId, isFromSearch ? { preserveSearchReturn: true } : undefined);
   };
   const [previousViewState, setPreviousViewState] = useState<ViewState | null>(null);
   const [searchReturnState, setSearchReturnState] = useState<{
@@ -1268,7 +1262,8 @@ const App: React.FC = () => {
   };
 
   const sortedMarkets = useMemo(() => {
-    const baseSorted = sortMarketsByOrder(markets);
+    const visibleMarkets = markets.filter(m => !isOmidMarket(m));
+    const baseSorted = sortMarketsByOrder(visibleMarkets);
     return [...baseSorted].sort((a, b) => {
       const expiredA = isMarketFullyExpired(a) ? 1 : 0;
       const expiredB = isMarketFullyExpired(b) ? 1 : 0;
@@ -1276,17 +1271,28 @@ const App: React.FC = () => {
     });
   }, [markets]);
 
-  // One consistent sample product from each market, horizontally scrollable (deterministic so it doesn't jump randomly)
+  // One consistent sample product from each active (non-expired) market, horizontally scrollable
   const sampleFeaturedProducts = useMemo(() => {
     const list: { product: DiscountProduct; market: MarketData }[] = [];
     const usedMarkets = new Set<string>();
 
     for (const m of sortedMarkets) {
-      const prods = (m.catalogs && m.catalogs.length > 0)
-        ? m.catalogs.flatMap(c => c.products || [])
-        : (m.products || []);
-      
-      const validProducts = prods.filter(p => p.productName && p.newPrice && p.newPrice !== '---');
+      if (isMarketFullyExpired(m)) continue;
+
+      const catalogsToCheck = (m.catalogs && m.catalogs.length > 0)
+        ? m.catalogs
+        : [{ endDate: undefined as string | undefined, products: m.products || [] }];
+
+      const validProducts: DiscountProduct[] = [];
+      for (const cat of catalogsToCheck) {
+        for (const p of (cat.products || [])) {
+          if (!p.productName || !p.newPrice || p.newPrice === '---') continue;
+          const cd = calculateDaysLeft(extractProductEndDate(p, cat.endDate));
+          if (cd && cd.daysLeft < 0) continue;
+          validProducts.push(p);
+        }
+      }
+
       if (validProducts.length > 0) {
         // Deterministically pick the first valid product with an image (or fallback to first valid product)
         const candidate = validProducts.find(p => !!(p.imageUrl || p.customImageUrl)) || validProducts[0];
@@ -1295,8 +1301,14 @@ const App: React.FC = () => {
       }
     }
 
+    const hasAnyProductsAnywhere = sortedMarkets.some(m =>
+      (m.catalogs && m.catalogs.length > 0)
+        ? m.catalogs.some(c => (c.products || []).length > 0)
+        : (m.products || []).length > 0
+    );
+
     // Default sample fallbacks ONLY if no products exist at all in any market
-    if (list.length === 0) {
+    if (list.length === 0 && !hasAnyProductsAnywhere) {
       const fallbackSamples = [
         {
           marketId: 'oba',
@@ -1377,6 +1389,7 @@ const App: React.FC = () => {
   const productPriceIndex = useMemo(() => {
     const index = new Map<string, { price: number; marketId: string }[]>();
     markets.forEach(m => {
+        if (isOmidMarket(m)) return;
         const catalogs = m.catalogs && m.catalogs.length > 0
           ? m.catalogs
           : [{ endDate: undefined, products: m.products || [] }];
@@ -1425,6 +1438,7 @@ const App: React.FC = () => {
           }>
       }>();
       markets.forEach(market => {
+          if (isOmidMarket(market)) return;
           const catalogs = market.catalogs && market.catalogs.length > 0
             ? market.catalogs
             : [{ endDate: undefined, products: market.products || [] }];
@@ -1775,6 +1789,218 @@ const App: React.FC = () => {
       window.removeEventListener('resize', updateHeaderHeight);
     };
   }, [activeMarketId, isLoading, showFavorites]);
+
+  const searchTopBarRef = useRef<HTMLDivElement | null>(null);
+  const [searchTopBarHeight, setSearchTopBarHeight] = useState<number>(0);
+
+  const isSearchViewActive =
+    searchQuery.trim().length >= 2 ||
+    debouncedSearchQuery.trim().length >= 2 ||
+    debouncedMaxPrice.length > 0 ||
+    showCheaperOnly;
+
+  useEffect(() => {
+    if (!isSearchViewActive || activeMarketId !== null || showFavorites) {
+      setSearchTopBarHeight(0);
+      return;
+    }
+    const updateSearchTopBarHeight = () => {
+      if (searchTopBarRef.current) {
+        const h = searchTopBarRef.current.offsetHeight;
+        setSearchTopBarHeight(h > 0 ? h : 0);
+      } else {
+        setSearchTopBarHeight(0);
+      }
+    };
+    updateSearchTopBarHeight();
+    const ro = new ResizeObserver(updateSearchTopBarHeight);
+    if (searchTopBarRef.current) ro.observe(searchTopBarRef.current);
+    window.addEventListener('resize', updateSearchTopBarHeight);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateSearchTopBarHeight);
+    };
+  }, [isSearchViewActive, activeMarketId, showFavorites, showCheaperOnly, filteredMarketData.length, debouncedSearchQuery]);
+
+  // Dual billboard auto-marquee for Home featured sample rows: starts 1s after render, opposite directions, ping-pongs at ends, pauses on touch
+  useEffect(() => {
+    const isHomeFeaturedVisible =
+      !isLoading &&
+      activeMarketId === null &&
+      !showFavorites &&
+      !showCheaperOnly &&
+      !isSearchViewActive &&
+      !viewProduct &&
+      sampleFeaturedProducts.length > 0;
+
+    if (!isHomeFeaturedVisible) return;
+
+    const topEl = featuredCarouselTopRef.current;
+    const bottomEl = featuredCarouselBottomRef.current;
+
+    // Initialize positions on first mount of Home rows (bottom starts at far right to glide left)
+    const initRaf = requestAnimationFrame(() => {
+      if (topEl && !marqueeStateRef.current.top.initialized) {
+        marqueeStateRef.current.top.pos = topEl.scrollLeft;
+        marqueeStateRef.current.top.lastWritten = topEl.scrollLeft;
+        marqueeStateRef.current.top.dir = 1;
+        marqueeStateRef.current.top.initialized = true;
+      }
+      if (bottomEl && !marqueeStateRef.current.bottom.initialized) {
+        const bottomMax = Math.max(0, bottomEl.scrollWidth - bottomEl.clientWidth);
+        if (bottomMax > 2) {
+          bottomEl.scrollLeft = bottomMax;
+          marqueeStateRef.current.bottom.pos = bottomMax;
+          marqueeStateRef.current.bottom.lastWritten = bottomMax;
+        } else {
+          marqueeStateRef.current.bottom.pos = bottomEl.scrollLeft;
+          marqueeStateRef.current.bottom.lastWritten = bottomEl.scrollLeft;
+        }
+        marqueeStateRef.current.bottom.dir = -1;
+        marqueeStateRef.current.bottom.initialized = true;
+      }
+    });
+
+    let rafId: number | null = null;
+    let lastTime = 0;
+    const SPEED_PX_PER_SEC = 26;
+
+    const step = (now: number) => {
+      if (lastTime === 0) lastTime = now;
+      const dt = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
+      lastTime = now;
+
+      const rows: Array<{ key: 'top' | 'bottom'; el: HTMLDivElement | null }> = [
+        { key: 'top', el: featuredCarouselTopRef.current },
+        { key: 'bottom', el: featuredCarouselBottomRef.current },
+      ];
+
+      for (const { key, el } of rows) {
+        if (!el) continue;
+        const st = marqueeStateRef.current[key];
+        const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+        if (maxScroll <= 2) continue;
+
+        if (marqueePointerDownRef.current[key] || now < marqueePauseUntilRef.current[key]) {
+          st.pos = el.scrollLeft;
+          st.lastWritten = el.scrollLeft;
+          continue;
+        }
+
+        // Sync if browser scrolled unexpectedly
+        if (Math.abs(el.scrollLeft - st.lastWritten) > 3) {
+          st.pos = el.scrollLeft;
+        }
+
+        st.pos += st.dir * SPEED_PX_PER_SEC * dt;
+        if (st.pos >= maxScroll) {
+          st.pos = maxScroll;
+          st.dir = -1;
+        } else if (st.pos <= 0) {
+          st.pos = 0;
+          st.dir = 1;
+        }
+        st.lastWritten = st.pos;
+        el.scrollLeft = st.pos;
+      }
+
+      rafId = requestAnimationFrame(step);
+    };
+
+    const startTimer = window.setTimeout(() => {
+      lastTime = 0;
+      rafId = requestAnimationFrame(step);
+    }, 1000);
+
+    return () => {
+      cancelAnimationFrame(initRaf);
+      window.clearTimeout(startTimer);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isLoading, activeMarketId, showFavorites, showCheaperOnly, isSearchViewActive, viewProduct, sampleFeaturedProducts.length]);
+
+  const [activeSearchMarketId, setActiveSearchMarketId] = useState<string | null>(null);
+  const searchChipsRowRef = useRef<HTMLDivElement | null>(null);
+  const programmaticScrollTimerRef = useRef<number | null>(null);
+  const isProgrammaticSearchScrollRef = useRef<boolean>(false);
+  const clickedSearchMarketRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isSearchViewActive || activeMarketId !== null || showFavorites || showCheaperOnly || filteredMarketData.length === 0) {
+      clickedSearchMarketRef.current = null;
+      isProgrammaticSearchScrollRef.current = false;
+      setActiveSearchMarketId(null);
+      return;
+    }
+
+    const cancelProgrammaticAndUnlockOnManualInput = () => {
+      if (programmaticScrollTimerRef.current !== null) {
+        window.clearTimeout(programmaticScrollTimerRef.current);
+        programmaticScrollTimerRef.current = null;
+      }
+      isProgrammaticSearchScrollRef.current = false;
+    };
+
+    const handleScrollEnd = () => {
+      if (isProgrammaticSearchScrollRef.current) {
+        cancelProgrammaticAndUnlockOnManualInput();
+      }
+    };
+
+    const updateActiveSearchMarket = () => {
+      if (isProgrammaticSearchScrollRef.current) return;
+      const headerH = stickyHeaderRef.current?.offsetHeight || stickyHeaderHeight;
+      const barH = searchTopBarRef.current?.offsetHeight || searchTopBarHeight;
+      const stickyBottom = headerH + barH;
+      const focusY = stickyBottom + 96;
+
+      // If the user explicitly clicked a market chip, keep it active while at its section or near page bottom
+      const lockedId = clickedSearchMarketRef.current;
+      if (lockedId) {
+        const lockedEl = document.getElementById(`search-market-card-${lockedId}`);
+        if (lockedEl) {
+          const lRect = lockedEl.getBoundingClientRect();
+          const atPageBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 40;
+          const matchesTopFocus = lRect.top <= focusY && lRect.bottom > stickyBottom + 40;
+          const visibleAtPageBottom = atPageBottom && lRect.top < window.innerHeight - 40 && lRect.bottom > stickyBottom + 40;
+          if (matchesTopFocus || visibleAtPageBottom) {
+            setActiveSearchMarketId(prev => (prev === lockedId ? prev : lockedId));
+            return;
+          }
+        }
+        clickedSearchMarketRef.current = null;
+      }
+
+      let currentId = filteredMarketData[0]?.id ?? null;
+      for (const m of filteredMarketData) {
+        const el = document.getElementById(`search-market-card-${m.id}`);
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.top <= focusY && rect.bottom > stickyBottom + 40) {
+          currentId = m.id;
+        }
+      }
+      setActiveSearchMarketId(prev => (prev === currentId ? prev : currentId));
+    };
+
+    updateActiveSearchMarket();
+    window.addEventListener('scroll', updateActiveSearchMarket, { passive: true });
+    window.addEventListener('scrollend', handleScrollEnd, { passive: true });
+    window.addEventListener('wheel', cancelProgrammaticAndUnlockOnManualInput, { passive: true });
+    window.addEventListener('touchstart', cancelProgrammaticAndUnlockOnManualInput, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', updateActiveSearchMarket);
+      window.removeEventListener('scrollend', handleScrollEnd);
+      window.removeEventListener('wheel', cancelProgrammaticAndUnlockOnManualInput);
+      window.removeEventListener('touchstart', cancelProgrammaticAndUnlockOnManualInput);
+    };
+  }, [isSearchViewActive, activeMarketId, showFavorites, showCheaperOnly, filteredMarketData, stickyHeaderHeight, searchTopBarHeight]);
+
+  useEffect(() => {
+    if (activeSearchMarketId && searchChipsRowRef.current) {
+      searchChipsRowRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+    }
+  }, [activeSearchMarketId]);
 
   const topCategoryPillsRef = useRef<HTMLDivElement | null>(null);
   const clickedCategoryRef = useRef<string | null>(null);
@@ -2430,7 +2656,7 @@ const App: React.FC = () => {
                       </>
                     )}
 
-                    {/* View Mode Toggle: 3-column Grid (default) vs 1-column List */}
+                    {/* View Mode Toggle: 3-column Grid (default) vs 2-column Grid */}
                     <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/80 shrink-0" role="group" aria-label="Görünüş rejimi">
                       <button
                         type="button"
@@ -2440,21 +2666,21 @@ const App: React.FC = () => {
                             ? 'bg-white text-emerald-600 shadow-2xs'
                             : 'text-gray-500 hover:text-gray-700'
                         }`}
-                        title="3-lü cərgə (Grid)"
+                        title="3-lü cərgə"
                       >
-                        <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        <Grid3x3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => setProductViewMode('list')}
+                        onClick={() => setProductViewMode('two')}
                         className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${
-                          productViewMode === 'list'
+                          productViewMode === 'two'
                             ? 'bg-white text-emerald-600 shadow-2xs'
                             : 'text-gray-500 hover:text-gray-700'
                         }`}
-                        title="Alt-alta siyahı (List)"
+                        title="2-li cərgə"
                       >
-                        <LayoutList className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        <Grid2x2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       </button>
                     </div>
                   </div>
@@ -2547,24 +2773,24 @@ const App: React.FC = () => {
                           type="button"
                           onClick={() => setProductViewMode('grid')}
                           className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'grid' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
-                          title="3-lü cərgə (Grid)"
+                          title="3-lü cərgə"
                         >
-                          <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <Grid3x3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                         <button
                           type="button"
-                          onClick={() => setProductViewMode('list')}
-                          className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'list' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
-                          title="Alt-alta siyahı (List)"
+                          onClick={() => setProductViewMode('two')}
+                          className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'two' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
+                          title="2-li cərgə"
                         >
-                          <LayoutList className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <Grid2x2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                       </div>
                       <span className="text-xs sm:text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{favorites.length} məhsul</span>
                     </div>
                   </div>
                   {favorites.length > 0 ? (
-                    <div className={`${productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4'} transition-all duration-300 ${isSearching ? 'blur-sm opacity-60' : ''}`}>
+                    <div className={`${productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5 sm:gap-4' : 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4'} transition-all duration-300 ${isSearching ? 'blur-sm opacity-60' : ''}`}>
                        {favorites.map((product, index) => {
                           const market = markets.find(m => m.id === product.marketId);
                           const marketName = market?.name || 'Naməlum Market';
@@ -2579,7 +2805,7 @@ const App: React.FC = () => {
                                     catalogEndDate={market?.catalogs?.[0]?.endDate}
                                     isAdmin={isAdmin}
                                     variant="compact"
-                                    isListMode={productViewMode === 'list'}
+                                    isListMode={false}
                                     isThreeColMobile={productViewMode === 'grid'}
                                     hasCheaperAlternative={hasCheaper}
                                     onClick={() => {
@@ -2632,60 +2858,161 @@ const App: React.FC = () => {
                        </div>
                     )}
                     <div className={`transition-all duration-300 ${isProcessingCheaper ? 'opacity-20 blur-sm' : ''}`}>
-                        {/* Geri düyməsi və Görünüş seçimi - Axtarış nəticələrində */}
-                        <div className="flex items-center justify-between bg-gray-50/90 border border-gray-200/90 rounded-xl px-3.5 py-2 mb-3 shadow-2xs gap-2">
-                          {debouncedSearchQuery.trim().length > 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSearchQuery('');
-                                setDebouncedSearchQuery('');
-                                setIsSearching(false);
-                              }}
-                              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer min-w-0"
-                              title="Axtarışı təmizlə və geri qayıt"
-                            >
-                              <div className="w-6 h-6 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs shrink-0">
-                                <ArrowLeft className="w-3.5 h-3.5" />
+                        {/* Sabit (Sticky) Geri düyməsi, Görünüş seçimi və sürüşdürülən Market çipləri */}
+                        <div
+                          ref={searchTopBarRef}
+                          style={{ top: `${stickyHeaderHeight}px` }}
+                          className="sticky z-30 bg-white/95 backdrop-blur-md border border-gray-200/90 rounded-xl px-2.5 sm:px-3.5 py-2 mb-3 shadow-xs space-y-2 transition-[top] duration-150"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            {debouncedSearchQuery.trim().length > 0 ? (
+                              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSearchQuery('');
+                                    setDebouncedSearchQuery('');
+                                    setIsSearching(false);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer shrink-0"
+                                  title="Axtarışı təmizlə və geri qayıt"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs shrink-0">
+                                    <ArrowLeft className="w-3.5 h-3.5" />
+                                  </div>
+                                  <span>Geri</span>
+                                </button>
+                                <span className="h-4 w-px bg-gray-200 shrink-0" aria-hidden="true" />
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+                                  <span className="text-xs sm:text-sm font-bold text-gray-900 truncate">
+                                    {debouncedSearchQuery}
+                                  </span>
+                                </div>
                               </div>
-                              <span className="truncate">Geri («{debouncedSearchQuery}»)</span>
-                            </button>
-                          ) : showCheaperOnly ? (
-                            <button
-                              type="button"
-                              onClick={() => handleShowCheaperOnlyChange(false)}
-                              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer min-w-0"
-                              title="Fürsətlərdən çıx və geri qayıt"
-                            >
-                              <div className="w-6 h-6 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs shrink-0">
-                                <ArrowLeft className="w-3.5 h-3.5" />
+                            ) : showCheaperOnly ? (
+                              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleShowCheaperOnlyChange(false)}
+                                  className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer shrink-0"
+                                  title="Fürsətlərdən çıx və geri qayıt"
+                                >
+                                  <div className="w-6 h-6 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs shrink-0">
+                                    <ArrowLeft className="w-3.5 h-3.5" />
+                                  </div>
+                                  <span>Geri</span>
+                                </button>
+                                <span className="h-4 w-px bg-gray-200 shrink-0" aria-hidden="true" />
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <TrendingDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 shrink-0" />
+                                  <span className="text-xs sm:text-sm font-bold text-gray-900 truncate">
+                                    Ümumi fürsətlər
+                                  </span>
+                                </div>
                               </div>
-                              <span className="truncate">Geri (Ümumi fürsətlər)</span>
-                            </button>
-                          ) : (
-                            <span className="text-xs sm:text-sm font-bold text-gray-700">Nəticələr</span>
-                          )}
+                            ) : (
+                              <span className="text-xs sm:text-sm font-bold text-gray-700">Nəticələr</span>
+                            )}
 
-                          {!showCheaperOnly && (
-                            <div className="flex items-center bg-white p-0.5 rounded-lg border border-gray-200/90 shrink-0" role="group" aria-label="Görünüş rejimi">
-                              <button
-                                type="button"
-                                onClick={() => setProductViewMode('grid')}
-                                className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'grid' ? 'bg-emerald-50 text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
-                                title="3-lü cərgə (Grid)"
+                            {!showCheaperOnly && (
+                              <div className="flex items-center bg-gray-100/90 p-0.5 rounded-lg border border-gray-200/90 shrink-0" role="group" aria-label="Görünüş rejimi">
+                                <button
+                                  type="button"
+                                  onClick={() => setProductViewMode('grid')}
+                                  className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'grid' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
+                                  title="3-lü cərgə"
+                                >
+                                  <Grid3x3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setProductViewMode('two')}
+                                  className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'two' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
+                                  title="2-li cərgə"
+                                >
+                                  <Grid2x2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {!showCheaperOnly && filteredMarketData.length > 0 && (() => {
+                            const effectiveActiveId = (
+                              activeSearchMarketId && filteredMarketData.some(m => m.id === activeSearchMarketId)
+                                ? activeSearchMarketId
+                                : filteredMarketData[0]?.id
+                            );
+                            const orderedChipMarkets = effectiveActiveId
+                              ? [
+                                  ...filteredMarketData.filter(m => m.id === effectiveActiveId),
+                                  ...filteredMarketData.filter(m => m.id !== effectiveActiveId)
+                                ]
+                              : filteredMarketData;
+
+                            return (
+                              <div
+                                ref={searchChipsRowRef}
+                                className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide pt-2 border-t border-gray-100"
                               >
-                                <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setProductViewMode('list')}
-                                className={`p-1 sm:p-1.5 rounded-md transition-all cursor-pointer ${productViewMode === 'list' ? 'bg-emerald-50 text-emerald-600 shadow-2xs' : 'text-gray-500 hover:text-gray-700'}`}
-                                title="Alt-alta siyahı (List)"
-                              >
-                                <LayoutList className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                              </button>
-                            </div>
-                          )}
+                                {orderedChipMarkets.map((m) => {
+                                  const shortName = m.name.replace(/\s+market$/i, '').trim().split(/\s+/)[0] || m.name;
+                                  const isActiveChip = effectiveActiveId === m.id;
+                                  return (
+                                    <button
+                                      key={`search-jump-${m.id}`}
+                                      type="button"
+                                      onClick={() => {
+                                        const targetEl = document.getElementById(`search-market-card-${m.id}`);
+                                        if (targetEl) {
+                                          if (programmaticScrollTimerRef.current !== null) {
+                                            window.clearTimeout(programmaticScrollTimerRef.current);
+                                          }
+                                          isProgrammaticSearchScrollRef.current = true;
+                                          clickedSearchMarketRef.current = m.id;
+                                          setActiveSearchMarketId(m.id);
+                                          if (searchChipsRowRef.current) {
+                                            searchChipsRowRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+                                          }
+                                          const headerH = stickyHeaderRef.current?.offsetHeight || stickyHeaderHeight;
+                                          const barH = searchTopBarRef.current?.offsetHeight || searchTopBarHeight;
+                                          const y = targetEl.getBoundingClientRect().top + window.scrollY - headerH - barH - 6;
+                                          window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+                                          programmaticScrollTimerRef.current = window.setTimeout(() => {
+                                            isProgrammaticSearchScrollRef.current = false;
+                                          }, 1300);
+                                        }
+                                      }}
+                                      className={`inline-flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all active:scale-95 shrink-0 cursor-pointer select-none shadow-2xs ${
+                                        isActiveChip
+                                          ? 'bg-emerald-50 border-emerald-400 text-emerald-900 shadow-xs'
+                                          : 'bg-white hover:bg-gray-50 border-gray-200/90 text-gray-900'
+                                      }`}
+                                      title={`${m.name} (${m.filteredProducts.length} məhsul)`}
+                                    >
+                                      <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-white border border-gray-200/80 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                                        {m.logoUrl ? (
+                                          <img src={m.logoUrl} alt={m.name} className="w-full h-full object-contain p-0.5 sm:p-1" />
+                                        ) : (
+                                          <span className={`text-${m.themeColor || 'green'}-700 font-black text-xs sm:text-sm`}>
+                                            {m.logoPlaceholder}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-sm sm:text-base font-black tracking-tight">{shortName}</span>
+                                      <span className={`inline-flex items-center justify-center min-w-[22px] px-2 py-0.5 rounded-full text-xs sm:text-sm font-black leading-none ${
+                                        isActiveChip
+                                          ? 'bg-emerald-600 text-white'
+                                          : 'bg-gray-100 text-gray-700'
+                                      }`}>
+                                        {m.filteredProducts.length}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
@@ -2750,10 +3077,6 @@ const App: React.FC = () => {
                                   key={market.id}
                                   market={market}
                                   filteredProducts={market.filteredProducts}
-                                  isExpanded={Boolean(expandedSearchMarkets[market.id])}
-                                  onExpand={() => setExpandedSearchMarkets(prev => ({ ...prev, [market.id]: true }))}
-                                  onCollapse={() => setExpandedSearchMarkets(prev => ({ ...prev, [market.id]: false }))}
-                                  stickyHeaderHeight={stickyHeaderHeight}
                                   productViewMode={productViewMode}
                                   isAdmin={isAdmin}
                                   isFavorite={isFavorite}
@@ -2774,22 +3097,6 @@ const App: React.FC = () => {
                                     }
                                   }}
                                   onEditProduct={(product) => handleEditFromSearch(product, market.id)}
-                                  onSelectMarket={() => {
-                                    setSearchReturnState({
-                                      searchQuery: searchQuery || debouncedSearchQuery,
-                                      maxPrice: maxPrice || debouncedMaxPrice,
-                                      expandedSearchMarkets: { ...expandedSearchMarkets },
-                                      scrollY: window.scrollY
-                                    });
-                                    setSearchQuery('');
-                                    setDebouncedSearchQuery('');
-                                    setMaxPrice('');
-                                    setDebouncedMaxPrice('');
-                                    setIsSearching(false);
-                                    setShowCheaperOnly(false);
-                                    setShowFavorites(false);
-                                    handleSelectMarket(market.id, { preserveSearchReturn: true });
-                                  }}
                                 />
                               );
                             });
@@ -2800,127 +3107,202 @@ const App: React.FC = () => {
                   <>
                     {activeMarketId === null ? (
                       <div className="space-y-4 sm:space-y-5 animate-[fadeIn_0.4s_ease-out] max-w-2xl sm:max-w-3xl mx-auto">
-                        {/* Horizontally scrollable row of featured products: 1 product from each market */}
-                        {sampleFeaturedProducts.length > 0 && (
-                          <div className="space-y-2">
-                            {/* Dots Indicator Above the Carousel */}
-                            <div className="flex items-center justify-center gap-1.5 py-1 select-none">
-                              {sampleFeaturedProducts.map((_, dotIdx) => {
-                                // Visible window is 3 full products (+ 1 peeking)
-                                const isVisibleInWindow = dotIdx >= carouselActiveIndex && dotIdx < carouselActiveIndex + 3;
+                        {/* Two independent horizontally scrollable rows of wide horizontal featured cards */}
+                        {sampleFeaturedProducts.length > 0 && (() => {
+                          type MarqueeRowItem =
+                            | { type: 'product'; product: DiscountProduct; market: MarketData }
+                            | { type: 'ad' };
+                          const topRowProducts: MarqueeRowItem[] = sampleFeaturedProducts
+                            .filter((_, i) => i % 2 === 0)
+                            .map(entry => ({ type: 'product', ...entry }));
+                          const bottomRowProducts: MarqueeRowItem[] = sampleFeaturedProducts
+                            .filter((_, i) => i % 2 === 1)
+                            .map(entry => ({ type: 'product', ...entry }));
+
+                          topRowProducts.splice(Math.min(1, topRowProducts.length), 0, { type: 'ad' });
+
+                          const sampleRows = [
+                            { key: 'top', items: topRowProducts, ref: featuredCarouselTopRef },
+                            ...(bottomRowProducts.length > 0
+                              ? [{ key: 'bottom', items: bottomRowProducts, ref: featuredCarouselBottomRef }]
+                              : [])
+                          ];
+
+                          return (
+                            <div className="space-y-2 sm:space-y-2.5">
+                              {sampleRows.map((row) => {
+                                const rowKey = row.key as 'top' | 'bottom';
                                 return (
+                                <div key={`sample-row-${row.key}`} className="relative group/carousel">
+                                  {/* Left scroll arrow (desktop) */}
                                   <button
-                                    key={`carousel-dot-${dotIdx}`}
                                     type="button"
-                                    onClick={() => {
-                                      if (featuredCarouselRef.current) {
-                                        const el = featuredCarouselRef.current;
-                                        const firstChild = el.firstElementChild as HTMLElement | null;
-                                        const secondChild = el.children[1] as HTMLElement | undefined;
-                                        const itemWidth = (firstChild && secondChild)
-                                          ? Math.max(1, secondChild.offsetLeft - firstChild.offsetLeft)
-                                          : (firstChild ? firstChild.offsetWidth + 8 : 110);
-                                        el.scrollTo({
-                                          left: dotIdx * itemWidth,
-                                          behavior: 'smooth'
-                                        });
+                                    onClick={() => scrollFeaturedRow(rowKey, row.ref, 'left')}
+                                    className="hidden md:flex absolute -left-3.5 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                                    title="Əvvəlki"
+                                  >
+                                    <ChevronLeft className="w-4 h-4" />
+                                  </button>
+
+                                  <div
+                                    ref={row.ref}
+                                    data-marquee-row={rowKey}
+                                    onTouchStart={() => {
+                                      marqueePointerDownRef.current[rowKey] = true;
+                                      marqueePauseUntilRef.current[rowKey] = Infinity;
+                                    }}
+                                    onTouchEnd={() => {
+                                      marqueePointerDownRef.current[rowKey] = false;
+                                      marqueePauseUntilRef.current[rowKey] = performance.now() + 3000;
+                                    }}
+                                    onTouchCancel={() => {
+                                      marqueePointerDownRef.current[rowKey] = false;
+                                      marqueePauseUntilRef.current[rowKey] = performance.now() + 3000;
+                                    }}
+                                    onPointerDown={(e) => {
+                                      if (e.pointerType !== 'touch') {
+                                        marqueePointerDownRef.current[rowKey] = true;
+                                        marqueePauseUntilRef.current[rowKey] = Infinity;
                                       }
                                     }}
-                                    className={`h-2 rounded-full transition-all duration-200 cursor-pointer ${
-                                      isVisibleInWindow
-                                        ? 'w-5 bg-blue-600 shadow-xs'
-                                        : 'w-2 bg-gray-300 hover:bg-gray-400'
-                                    }`}
-                                    title={`${dotIdx + 1}-ci nümunə məhsul`}
-                                  />
+                                    onPointerUp={(e) => {
+                                      if (e.pointerType !== 'touch') {
+                                        marqueePointerDownRef.current[rowKey] = false;
+                                        marqueePauseUntilRef.current[rowKey] = performance.now() + 3000;
+                                      }
+                                    }}
+                                    onPointerCancel={(e) => {
+                                      if (e.pointerType !== 'touch') {
+                                        marqueePointerDownRef.current[rowKey] = false;
+                                        marqueePauseUntilRef.current[rowKey] = performance.now() + 3000;
+                                      }
+                                    }}
+                                    onPointerLeave={(e) => {
+                                      if (e.pointerType !== 'touch' && marqueePointerDownRef.current[rowKey]) {
+                                        marqueePointerDownRef.current[rowKey] = false;
+                                        marqueePauseUntilRef.current[rowKey] = performance.now() + 3000;
+                                      }
+                                    }}
+                                    onWheel={() => {
+                                      marqueePauseUntilRef.current[rowKey] = performance.now() + 3000;
+                                    }}
+                                    onScroll={(e) => {
+                                      const el = e.currentTarget;
+                                      const st = marqueeStateRef.current[rowKey];
+                                      if (Math.abs(el.scrollLeft - st.lastWritten) > 3) {
+                                        st.pos = el.scrollLeft;
+                                        st.lastWritten = el.scrollLeft;
+                                        marqueePauseUntilRef.current[rowKey] = performance.now() + 2600;
+                                      }
+                                    }}
+                                    className="flex gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide py-0.5 px-0.5"
+                                  >
+                                    {row.items.map((item, idx) => {
+                                      if (item.type === 'ad') {
+                                        return (
+                                          <div
+                                            key={`sample-hero-${row.key}-ad-${idx}`}
+                                            className="w-[calc((100%-8px)/1.85)] sm:w-[calc((100%-16px)/2.5)] md:w-[calc((100%-20px)/3.1)] shrink-0 h-[96px] sm:h-[108px]"
+                                          >
+                                            <div
+                                              style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+                                              className="relative flex flex-col h-full select-none pt-3.5 sm:pt-4"
+                                            >
+                                              <div
+                                                className="absolute top-0 left-0 z-0 bg-amber-500 text-white px-2 pt-[3px] rounded-t-lg sm:rounded-t-xl flex items-start justify-center pointer-events-none select-none max-w-[88%] shadow-xs"
+                                                style={{ height: '34px', backgroundColor: '#f59e0b' }}
+                                                title="Reklam"
+                                              >
+                                                <span className="text-[9px] sm:text-[10.5px] font-black tracking-tight whitespace-nowrap leading-none">
+                                                  Reklam
+                                                </span>
+                                              </div>
+                                              <div className="bg-white rounded-xl sm:rounded-2xl overflow-hidden flex items-center justify-center h-full relative z-10 shadow-2xs border border-amber-200/90 p-1.5">
+                                                <div className="w-full h-full rounded-[9px] sm:rounded-xl border border-dashed border-amber-300/90 bg-white flex items-center justify-center px-2 text-center">
+                                                  <p className="text-[11.5px] min-[380px]:text-xs sm:text-[13px] font-bold text-gray-600 leading-snug">
+                                                    Burda sizin reklamınız ola bilər
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      }
+
+                                      const { product, market } = item;
+                                      return (
+                                        <div
+                                          key={`sample-hero-${row.key}-${market.id}-${idx}`}
+                                          className="w-[calc((100%-8px)/1.85)] sm:w-[calc((100%-16px)/2.5)] md:w-[calc((100%-20px)/3.1)] shrink-0 h-[96px] sm:h-[108px]"
+                                        >
+                                          <ProductCard
+                                            product={product}
+                                            accentColor={market.themeColor || 'green'}
+                                            marketLogoUrl={market.logoUrl}
+                                            marketName={market.name}
+                                            showMarketRibbon={true}
+                                            catalogEndDate={market.catalogs?.[0]?.endDate}
+                                            hideCountdown={true}
+                                            isAdmin={isAdmin}
+                                            variant="mini"
+                                            isListMode={true}
+                                            onClick={() => {
+                                              if (!isAdmin) {
+                                                const mktCatalogs = market.catalogs || [];
+                                                const selectedCatId = activeCatalogByMarket[market.id] || (mktCatalogs[0]?.id || null);
+                                                const defaultCatalog = mktCatalogs.find(c => c.id === selectedCatId) || (mktCatalogs.length > 0 ? mktCatalogs[0] : null);
+                                                const targetCatalog = mktCatalogs.find(c => (c.products || []).includes(product)) || defaultCatalog;
+                                                const rawMarketProds = targetCatalog ? (targetCatalog.products || []) : (market.products || []);
+
+                                                const catMap = new Map<string, DiscountProduct[]>();
+                                                rawMarketProds.forEach(p => {
+                                                  const cat = (p.category || 'Digər').trim() || 'Digər';
+                                                  if (!catMap.has(cat)) catMap.set(cat, []);
+                                                  catMap.get(cat)!.push(p);
+                                                });
+                                                const orderedMarketProds = catMap.size > 1 ? Array.from(catMap.values()).flat() : rawMarketProds;
+
+                                                const marketModalList = (orderedMarketProds.length > 0 ? orderedMarketProds : [product]).map(p => ({
+                                                  product: p,
+                                                  marketName: market.name,
+                                                  marketId: market.id,
+                                                  catalogEndDate: targetCatalog?.endDate
+                                                }));
+                                                const clickedIdx = marketModalList.findIndex(item => item.product === product);
+
+                                                setViewProduct({
+                                                  product,
+                                                  marketName: market.name,
+                                                  marketId: market.id,
+                                                  catalogEndDate: targetCatalog?.endDate,
+                                                  productList: marketModalList,
+                                                  currentIndex: clickedIdx >= 0 ? clickedIdx : 0
+                                                });
+                                              }
+                                            }}
+                                            isFavorite={isFavorite(product.productName || '', market.id)}
+                                            onToggleFavorite={() => toggleFavorite(product, market.id)}
+                                          />
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Right scroll arrow (desktop) */}
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollFeaturedRow(rowKey, row.ref, 'right')}
+                                    className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                                    title="Növbəti"
+                                  >
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
+                                </div>
                                 );
                               })}
                             </div>
-
-                            <div className="relative group/carousel">
-                              {/* Left scroll arrow (desktop) */}
-                              <button
-                                type="button"
-                                onClick={() => scrollFeaturedCarousel('left')}
-                                className="hidden md:flex absolute -left-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                                title="Əvvəlki"
-                              >
-                                <ChevronLeft className="w-4 h-4" />
-                              </button>
-
-                              <div 
-                                ref={featuredCarouselRef}
-                                onScroll={handleCarouselScroll}
-                                className="flex gap-2 sm:gap-2.5 overflow-x-auto scrollbar-hide scroll-smooth py-1 px-0.5"
-                              >
-                                {sampleFeaturedProducts.map(({ product, market }, idx) => (
-                                  <div 
-                                    key={`sample-hero-${market.id}-${idx}`}
-                                    className="w-[calc((100%-24px)/3.5)] sm:w-[calc((100%-30px)/3.5)] min-w-[82px] sm:min-w-[130px] md:min-w-[145px] shrink-0"
-                                  >
-                                    <ProductCard
-                                      product={product}
-                                      accentColor={market.themeColor || 'green'}
-                                      marketLogoUrl={market.logoUrl}
-                                      marketName={market.name}
-                                      showMarketRibbon={true}
-                                      catalogEndDate={market.catalogs?.[0]?.endDate}
-                                      hideCountdown={true}
-                                      isAdmin={isAdmin}
-                                      variant="mini"
-                                      onClick={() => {
-                                        if (!isAdmin) {
-                                          const mktCatalogs = market.catalogs || [];
-                                          const selectedCatId = activeCatalogByMarket[market.id] || (mktCatalogs[0]?.id || null);
-                                          const defaultCatalog = mktCatalogs.find(c => c.id === selectedCatId) || (mktCatalogs.length > 0 ? mktCatalogs[0] : null);
-                                          const targetCatalog = mktCatalogs.find(c => (c.products || []).includes(product)) || defaultCatalog;
-                                          const rawMarketProds = targetCatalog ? (targetCatalog.products || []) : (market.products || []);
-
-                                          const catMap = new Map<string, DiscountProduct[]>();
-                                          rawMarketProds.forEach(p => {
-                                            const cat = (p.category || 'Digər').trim() || 'Digər';
-                                            if (!catMap.has(cat)) catMap.set(cat, []);
-                                            catMap.get(cat)!.push(p);
-                                          });
-                                          const orderedMarketProds = catMap.size > 1 ? Array.from(catMap.values()).flat() : rawMarketProds;
-
-                                          const marketModalList = (orderedMarketProds.length > 0 ? orderedMarketProds : [product]).map(p => ({
-                                            product: p,
-                                            marketName: market.name,
-                                            marketId: market.id,
-                                            catalogEndDate: targetCatalog?.endDate
-                                          }));
-                                          const clickedIdx = marketModalList.findIndex(item => item.product === product);
-
-                                          setViewProduct({ 
-                                            product, 
-                                            marketName: market.name, 
-                                            marketId: market.id,
-                                            catalogEndDate: targetCatalog?.endDate,
-                                            productList: marketModalList,
-                                            currentIndex: clickedIdx >= 0 ? clickedIdx : 0
-                                          });
-                                        }
-                                      }}
-                                      isFavorite={isFavorite(product.productName || '', market.id)}
-                                      onToggleFavorite={() => toggleFavorite(product, market.id)}
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-
-                              {/* Right scroll arrow (desktop) */}
-                              <button
-                                type="button"
-                                onClick={() => scrollFeaturedCarousel('right')}
-                                className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 border border-gray-200 shadow-md items-center justify-center text-gray-700 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                                title="Növbəti"
-                              >
-                                <ChevronRight className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Quick-Search Row below sample products */}
                         <div className="flex flex-wrap items-center gap-2 px-0.5">
@@ -2939,6 +3321,30 @@ const App: React.FC = () => {
                             );
                           })}
                         </div>
+
+                        {/* Total product count above the Markets List (active / non-expired products only) */}
+                        {(() => {
+                          const totalHomeProductsCount = sortedMarkets.reduce((sum, m) => {
+                            if (isMarketFullyExpired(m)) return sum;
+                            const previewCat = m.catalogs && m.catalogs.length > 0 ? m.catalogs[0] : null;
+                            const prods = previewCat ? (previewCat.products || []) : (m.products || []);
+                            const activeCount = prods.reduce((acc, p) => {
+                              const cd = calculateDaysLeft(extractProductEndDate(p, previewCat?.endDate));
+                              return cd && cd.daysLeft < 0 ? acc : acc + 1;
+                            }, 0);
+                            return sum + activeCount;
+                          }, 0);
+                          return (
+                            <div className="flex items-center justify-between px-1 pt-0.5">
+                              <span className="text-xs sm:text-sm font-extrabold text-gray-500 uppercase tracking-wider">
+                                Marketlər
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-200/90 px-2.5 sm:px-3 py-1 rounded-full shadow-2xs">
+                                Cəmi {totalHomeProductsCount} məhsul
+                              </span>
+                            </div>
+                          );
+                        })()}
 
                         {/* Markets List - Alt alta (vertically stacked) with icon, name, and green (active) or gray (expired) product count */}
                         <div className="flex flex-col gap-2 sm:gap-2.5">
@@ -3190,7 +3596,7 @@ const App: React.FC = () => {
                                               </div>
                                             )}
 
-                                            <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
+                                            <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3.5 md:gap-4'}>
                                               {group.products.map(({ product, originalIndex }) => (
                                                 <ProductCard 
                                                   key={`${mkt.id}-${product.productName}-${originalIndex}`} 
@@ -3199,7 +3605,7 @@ const App: React.FC = () => {
                                                   catalogEndDate={mktCatalog?.endDate}
                                                   isAdmin={isAdmin} 
                                                   variant="compact"
-                                                  isListMode={productViewMode === 'list'}
+                                                  isListMode={false}
                                                   isThreeColMobile={productViewMode === 'grid'}
                                                   hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
                                                   onClick={() => {
@@ -3226,7 +3632,7 @@ const App: React.FC = () => {
                                       })}
                                     </div>
                                 ) : (
-                                  <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3.5 md:gap-4'}>
+                                  <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3.5 md:gap-4'}>
                                     {displayedProducts.map((product, index) => (
                                       <ProductCard 
                                         key={`${mkt.id}-${product.productName}-${index}`} 
@@ -3235,7 +3641,7 @@ const App: React.FC = () => {
                                         catalogEndDate={mktCatalog?.endDate}
                                         isAdmin={isAdmin} 
                                         variant="compact"
-                                        isListMode={productViewMode === 'list'}
+                                        isListMode={false}
                                         isThreeColMobile={productViewMode === 'grid'}
                                         hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
                                         onClick={() => {
@@ -3381,7 +3787,7 @@ const App: React.FC = () => {
               totalCount={viewProduct?.productList?.length}
               productList={viewProduct?.productList}
               onSelectIndex={handleSelectIndexInModal}
-              onSelectMarketInModal={handleOpenMarketSwipeFeed}
+              onSelectMarketInModal={handleNavigateToMarketFromModal}
               isFavorite={Boolean(viewProduct && modalMarketId && isFavorite(viewProduct.product.productName || '', modalMarketId))}
               onToggleFavorite={viewProduct && modalMarketId ? () => toggleFavorite(viewProduct.product, modalMarketId) : undefined}
               onEnsureFavorite={viewProduct && modalMarketId ? () => ensureFavorite(viewProduct.product, modalMarketId) : undefined}

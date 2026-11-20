@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { DiscountProduct, ProductCategory } from '../types';
 import { 
   Apple, 
@@ -39,6 +39,121 @@ interface ProductCardProps {
   isListMode?: boolean;
   isThreeColMobile?: boolean;
 }
+
+let sharedMeasureCanvasCtx: CanvasRenderingContext2D | null = null;
+const getMeasureCanvasCtx = (): CanvasRenderingContext2D | null => {
+  if (typeof document === 'undefined') return null;
+  if (!sharedMeasureCanvasCtx) {
+    const canvas = document.createElement('canvas');
+    sharedMeasureCanvasCtx = canvas.getContext('2d');
+  }
+  return sharedMeasureCanvasCtx;
+};
+
+const fitWholeWordsToLines = (text: string, el: HTMLElement, maxLines = 2): string => {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return text;
+
+  const maxWidth = el.clientWidth;
+  if (maxWidth <= 0) return text;
+
+  const ctx = getMeasureCanvasCtx();
+  if (!ctx) return text;
+
+  const cs = window.getComputedStyle(el);
+  ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+
+  const usableWidth = Math.max(16, maxWidth - 2);
+  let lineIndex = 0;
+  let currentLine = '';
+  let fittedCount = 0;
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (!currentLine) {
+      const wWidth = ctx.measureText(w).width;
+      if (i === 0) {
+        currentLine = w;
+        fittedCount = 1;
+        if (wWidth > usableWidth) {
+          lineIndex = 1;
+        }
+      } else if (wWidth <= usableWidth) {
+        currentLine = w;
+        fittedCount = i + 1;
+      } else {
+        break;
+      }
+    } else {
+      const candidate = `${currentLine} ${w}`;
+      if (ctx.measureText(candidate).width <= usableWidth) {
+        currentLine = candidate;
+        fittedCount = i + 1;
+      } else {
+        lineIndex += 1;
+        if (lineIndex >= maxLines) break;
+        if (ctx.measureText(w).width <= usableWidth) {
+          currentLine = w;
+          fittedCount = i + 1;
+        } else {
+          break;
+        }
+      }
+    }
+  }
+
+  return words.slice(0, Math.max(1, fittedCount)).join(' ');
+};
+
+const WholeWordsTitle: React.FC<{ text: string; className?: string }> = ({ text, className = '' }) => {
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const [displayText, setDisplayText] = useState<string>(text);
+
+  useLayoutEffect(() => {
+    const el = headingRef.current;
+    if (!el) return;
+    const next = fitWholeWordsToLines(text, el, 2);
+    setDisplayText(prev => (prev === next ? prev : next));
+  }, [text, className]);
+
+  useLayoutEffect(() => {
+    const el = headingRef.current;
+    if (!el) return;
+    const cs = window.getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.28);
+    const maxAllowedH = lh * 2 + 2;
+    const currentWords = displayText.trim().split(/\s+/).filter(Boolean);
+    if (el.scrollHeight > maxAllowedH && currentWords.length > 1) {
+      setDisplayText(currentWords.slice(0, currentWords.length - 1).join(' '));
+    }
+  }, [displayText]);
+
+  useEffect(() => {
+    const el = headingRef.current;
+    if (!el) return;
+    const recompute = () => {
+      if (!headingRef.current) return;
+      const next = fitWholeWordsToLines(text, headingRef.current, 2);
+      setDisplayText(prev => (prev === next ? prev : next));
+    };
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(recompute).catch(() => {});
+    }
+    return () => ro.disconnect();
+  }, [text]);
+
+  return (
+    <h3
+      ref={headingRef}
+      className={`${className} w-full overflow-hidden`}
+      title={text}
+    >
+      {displayText}
+    </h3>
+  );
+};
 
 export interface CleanProductInfo {
   cleanName: string;
@@ -302,6 +417,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const [imageError, setImageError] = useState(false);
   const isMini = variant === 'mini';
+  const isMiniRow = isMini && isListMode;
+  const isPureList = isListMode && !isMini;
   const isCompact = variant === 'compact' || isMini;
   const effectiveRow = isListMode || isRowOnMobile;
 
@@ -368,16 +485,16 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
   return (
     <div
       style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
-      className={`relative flex flex-col h-full select-none ${showMarketRibbon ? (isMini ? 'pt-4 sm:pt-5' : 'pt-5 sm:pt-5.5') : ''}`}
+      className={`relative flex flex-col h-full select-none ${showMarketRibbon ? (isMiniRow ? 'pt-3.5 sm:pt-4' : isMini ? 'pt-4 sm:pt-5' : 'pt-5 sm:pt-5.5') : ''}`}
     >
-      {/* Market Name Tab - Sits UNDER the card (z-0), soft brand color matching the market */}
+      {/* Market Name Tab - Sits UNDER the card (z-0), extends well below top-left rounded corner */}
       {showMarketRibbon && formattedMarketName && (
         <div 
-          className={`absolute top-0 left-0 z-0 ${softBadge.bg} ${softBadge.text} ${isMini ? 'px-2 sm:px-2.5 pt-0.5 pb-1.5' : 'px-2.5 sm:px-3 pt-0.5 pb-2'} rounded-t-lg sm:rounded-t-xl flex items-center justify-center pointer-events-none select-none max-w-[88%] shadow-xs`}
-          style={{ height: isMini ? '23px' : '28px', backgroundColor: softBadge.hex }}
+          className={`absolute top-0 left-0 z-0 ${softBadge.bg} ${softBadge.text} ${isMiniRow ? 'px-2 pt-[3px]' : isMini ? 'px-2 sm:px-2.5 pt-1' : 'px-2.5 sm:px-3 pt-1'} rounded-t-lg sm:rounded-t-xl flex items-start justify-center pointer-events-none select-none max-w-[88%] shadow-xs`}
+          style={{ height: isMiniRow ? '34px' : isMini ? '38px' : '44px', backgroundColor: softBadge.hex }}
           title={marketName}
         >
-          <span className={`${isMini ? 'text-[9.5px] sm:text-[11px]' : 'text-[11px] sm:text-xs'} font-black tracking-tight whitespace-nowrap leading-none`}>
+          <span className={`${isMiniRow ? 'text-[9px] sm:text-[10.5px]' : isMini ? 'text-[9.5px] sm:text-[11px]' : 'text-[11px] sm:text-xs'} font-black tracking-tight whitespace-nowrap leading-none`}>
             {formattedMarketName}
           </span>
         </div>
@@ -388,7 +505,7 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         onClick={onClick}
         className={`
         bg-white rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-300
-        ${isListMode ? 'flex flex-row p-2 sm:p-2.5 items-center' : isRowOnMobile ? 'flex flex-row sm:flex-col p-2 sm:p-0 items-center sm:items-stretch' : 'flex flex-col'}
+        ${isMiniRow ? 'flex flex-row p-1.5 sm:p-2 items-center' : isPureList ? 'flex flex-row p-2 sm:p-2.5 items-center' : isRowOnMobile ? 'flex flex-row sm:flex-col p-2 sm:p-0 items-center sm:items-stretch' : 'flex flex-col'}
         h-full group relative cursor-pointer z-10
         ${hasCheaperAlternative
           ? 'shadow-xs hover:shadow-sm border-[1.5px] border-emerald-500 hover:border-emerald-600'
@@ -403,11 +520,11 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
               e.stopPropagation();
               onToggleFavorite();
             }}
-            className={`absolute z-30 transition-colors ${effectiveRow ? 'top-2 right-2 p-1' : isThreeColMobile ? 'top-1 right-1 sm:top-1.5 sm:right-1.5 p-1 sm:p-1.5' : 'top-1.5 right-1.5 p-1.5'} text-gray-300 hover:text-red-500`}
+            className={`absolute z-30 transition-colors ${isMiniRow ? 'top-1 right-1 p-0.5' : effectiveRow ? 'top-2 right-2 p-1' : isThreeColMobile ? 'top-1 right-1 sm:top-1.5 sm:right-1.5 p-1 sm:p-1.5' : 'top-1.5 right-1.5 p-1.5'} text-gray-300 hover:text-red-500`}
             title={isFavorite ? "Yadda saxlanılanlardan çıxar" : "Yadda saxla"}
           >
             <Heart 
-              className={`${isMini ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : isThreeColMobile ? "w-3.5 h-3.5 sm:w-5 sm:h-5" : "w-4 h-4 sm:w-5 sm:h-5"} ${isFavorite ? "fill-red-500 text-red-500" : "hover:text-red-400"} drop-shadow-xs`} 
+              className={`${isMiniRow ? "w-3.5 h-3.5" : isMini ? "w-3.5 h-3.5 sm:w-4 sm:h-4" : isThreeColMobile ? "w-3.5 h-3.5 sm:w-5 sm:h-5" : "w-4 h-4 sm:w-5 sm:h-5"} ${isFavorite ? "fill-red-500 text-red-500" : "hover:text-red-400"} drop-shadow-xs`} 
               strokeWidth={2} 
             />
           </button>
@@ -427,13 +544,15 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
 
         {/* Product Image Container */}
         <div className={`
-          ${isListMode
-            ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-28 sm:h-28 rounded-lg shrink-0'
-            : isRowOnMobile
-              ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-full sm:aspect-[6/5] rounded-lg sm:rounded-none shrink-0'
-              : isMini
-                ? 'aspect-square w-full'
-                : 'aspect-[6/5] w-full'}
+          ${isMiniRow
+            ? 'w-[68px] h-[68px] min-[380px]:w-[74px] min-[380px]:h-[74px] sm:w-[82px] sm:h-[82px] rounded-lg shrink-0'
+            : isPureList
+              ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-28 sm:h-28 rounded-lg shrink-0'
+              : isRowOnMobile
+                ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-full sm:aspect-[6/5] rounded-lg sm:rounded-none shrink-0'
+                : isMini
+                  ? 'aspect-square w-full'
+                  : 'aspect-[6/5] w-full'}
           relative overflow-hidden bg-gray-50 flex items-center justify-center
         `}>
           {!imageError ? (
@@ -449,6 +568,7 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
                 }
               }}
               loading="lazy"
+              decoding="async"
             />
           ) : (
             <div className={`w-full h-full flex items-center justify-center ${isExpired ? 'bg-gray-100/70 text-gray-400 grayscale-[55%]' : `bg-${accentColor}-50 text-${accentColor}-300`} flex-col gap-1`}>
@@ -490,10 +610,10 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
               : 'max-w-[calc(100%-0.5rem)]';
 
             return (
-              <div className={`absolute ${isMini ? 'top-1 left-1' : 'top-1 left-1 sm:top-1.5 sm:left-1.5'} z-20 flex flex-col items-start gap-1 pointer-events-none ${topLeftMaxWidth}`}>
+              <div className={`absolute ${isMini ? 'top-1 left-1' : 'top-1 left-1 sm:top-1.5 sm:left-1.5'} z-20 flex flex-row items-start gap-1 pointer-events-none ${topLeftMaxWidth}`}>
                 {marketLogoUrl && (
                   <div 
-                    className={`${isMini ? 'w-5 h-5 sm:w-6 sm:h-6' : isThreeColMobile ? 'w-5 h-5 sm:w-7 sm:h-7' : 'w-6 h-6 sm:w-7 sm:h-7'} rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden`}
+                    className={`${isMini ? 'w-5 h-5 sm:w-6 sm:h-6' : isThreeColMobile ? 'w-5 h-5 sm:w-7 sm:h-7' : 'w-6 h-6 sm:w-7 sm:h-7'} rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden shrink-0`}
                     title={marketName || "Market"}
                   >
                     <img src={marketLogoUrl} alt={marketName || "Market"} className="w-full h-full object-contain" />
@@ -528,22 +648,53 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
             );
           })()}
 
-          {/* Bottom Left: Discount Percentage when top-left is occupied by Market Logo or "Ucuzu var" */}
-          {(marketLogoUrl || hasCheaperAlternative) && product.discountPercentage && (
-            <div className="absolute bottom-1 left-1 sm:bottom-1.5 sm:left-1.5 z-10 flex flex-col items-start gap-0.5 sm:gap-1 pointer-events-none">
-              <div className={`
-                ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center
-                ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
-              `}>
-                {product.discountPercentage}
-              </div>
+          {/* Bottom Left: Discount Percentage (when top-left is occupied) + Countdown Badge matching weight badge scale */}
+          {(((marketLogoUrl || hasCheaperAlternative) && product.discountPercentage) || (!hideCountdown && countdownInfo && countdownInfo.daysLeft >= 0)) && (
+            <div className="absolute bottom-1 left-1 sm:bottom-1.5 sm:left-1.5 z-10 flex flex-col items-start gap-1 pointer-events-none">
+              {(marketLogoUrl || hasCheaperAlternative) && product.discountPercentage && (
+                <div className={`
+                  ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center
+                  ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
+                `}>
+                  {product.discountPercentage}
+                </div>
+              )}
+
+              {!hideCountdown && countdownInfo && countdownInfo.daysLeft >= 0 && (
+                <div
+                  className={`inline-flex items-center gap-1 font-black rounded-md shadow-md tracking-tight leading-none select-none ${
+                    countdownInfo.daysLeft <= 1
+                      ? 'bg-red-600 text-white'
+                      : 'bg-amber-400 text-gray-950'
+                  } ${
+                    isThreeColMobile
+                      ? 'text-[10.5px] sm:text-sm px-2 sm:px-2.5 py-0.5 sm:py-1'
+                      : isMini
+                        ? 'text-[10px] sm:text-xs px-2 py-0.5'
+                        : 'text-xs sm:text-sm md:text-base px-2.5 py-1'
+                  }`}
+                  title={`Bitmə tarixi: ${countdownInfo.formattedDate} (${countdownInfo.daysLeft === 0 ? 'Bu gün bitir' : `${countdownInfo.daysLeft} gün qaldı`})`}
+                >
+                  <Clock
+                    className={`${
+                      isThreeColMobile
+                        ? 'w-2.5 h-2.5 sm:w-3.5 sm:h-3.5'
+                        : isMini
+                          ? 'w-2.5 h-2.5 sm:w-3 sm:h-3'
+                          : 'w-3 h-3 sm:w-3.5 sm:h-3.5'
+                    } shrink-0`}
+                    strokeWidth={2.5}
+                  />
+                  <span>{countdownInfo.daysLeft >= 1 ? countdownInfo.daysLeft : 'Son'}</span>
+                </div>
+              )}
             </div>
           )}
 
           {/* Bottom Right: Quantity/Weight Badge */}
           {quantityBadge && (
             <div 
-              className={`absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 z-10 bg-black text-white font-black ${isThreeColMobile ? 'text-[10.5px] sm:text-sm px-2 sm:px-2.5 py-0.5 sm:py-1' : isMini ? 'text-[10px] sm:text-xs px-2 py-0.5' : 'text-xs sm:text-sm md:text-base px-2.5 py-1'} rounded-md shadow-md tracking-tight leading-none select-none pointer-events-none`}
+              className={`absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 z-10 bg-black text-white font-black ${isMiniRow ? 'text-[8.5px] sm:text-[10px] px-1.5 py-0.5' : isThreeColMobile ? 'text-[10.5px] sm:text-sm px-2 sm:px-2.5 py-0.5 sm:py-1' : isMini ? 'text-[10px] sm:text-xs px-2 py-0.5' : 'text-xs sm:text-sm md:text-base px-2.5 py-1'} rounded-md shadow-md tracking-tight leading-none select-none pointer-events-none`}
               title={`Miqdar / Çəki: ${quantityBadge}`}
             >
               {quantityBadge}
@@ -553,93 +704,86 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
 
       {/* Content Area */}
       <div className={`${
-        isListMode
-          ? 'flex-1 min-w-0 pl-3.5 p-1 flex flex-col justify-between h-full'
-          : isRowOnMobile
-            ? 'flex-1 min-w-0 pl-3.5 sm:pl-2.5 p-1 sm:p-2.5 flex flex-col justify-between h-full'
-            : isThreeColMobile
-              ? 'p-1.5 sm:p-2.5 flex-1 flex flex-col justify-between'
-              : `${isMini ? 'p-2 sm:p-2.5' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`
+        isMiniRow
+          ? 'flex-1 min-w-0 pl-2 sm:pl-2.5 py-0.5 flex flex-col justify-between h-full'
+          : isPureList
+            ? 'flex-1 min-w-0 pl-3.5 p-1 flex flex-col justify-between h-full'
+            : isRowOnMobile
+              ? 'flex-1 min-w-0 pl-3.5 sm:pl-2.5 p-1 sm:p-2.5 flex flex-col justify-between h-full'
+              : isThreeColMobile
+                ? 'p-1.5 sm:p-2.5 flex-1 flex flex-col justify-between'
+                : `${isMini ? 'p-2 sm:p-2.5' : 'p-2 sm:p-2.5'} flex-1 flex flex-col justify-between`
       }`}>
         <div>
           <div className={`${
-            isListMode
-              ? 'min-h-0 pr-6'
-              : isRowOnMobile
-                ? 'min-h-0 sm:min-h-[2.8rem] pr-6 sm:pr-0'
-                : isThreeColMobile
-                  ? 'min-h-[2rem] sm:min-h-[2.8rem]'
-                  : isMini
-                    ? 'min-h-[2.2rem] sm:min-h-[2.5rem]'
-                    : 'min-h-[2.4rem] sm:min-h-[2.8rem]'
+            isMiniRow
+              ? 'min-h-0 pr-4'
+              : isPureList
+                ? 'min-h-0 pr-6'
+                : isRowOnMobile
+                  ? 'min-h-0 sm:min-h-[2.65rem] pr-6 sm:pr-0'
+                  : isThreeColMobile
+                    ? 'min-h-[2.25rem] sm:min-h-[2.65rem]'
+                    : isMini
+                      ? 'min-h-[2.2rem] sm:min-h-[2.45rem]'
+                      : 'min-h-[2.45rem] sm:min-h-[2.75rem]'
           } flex items-start`}>
-            <h3 
-              className={`font-bold text-gray-900 line-clamp-2 leading-snug ${
-                isListMode
-                  ? 'text-[14px] xs:text-[15.5px] sm:text-base'
-                  : isRowOnMobile
-                    ? 'text-[14px] xs:text-[15.5px] sm:text-[13px] md:text-sm'
-                    : isThreeColMobile
-                      ? 'text-[10.5px] xs:text-[11.5px] sm:text-[13px] md:text-sm'
-                      : isMini
-                        ? 'text-[10.5px] sm:text-xs'
-                        : 'text-xs sm:text-[13px] md:text-sm'
-              }`} 
-              title={product.productName}
-            >
-              {product.productName}
-            </h3>
+            <WholeWordsTitle
+              text={product.productName}
+              className={`font-bold text-gray-900 leading-[1.22] ${
+                isMiniRow
+                  ? 'text-[12px] min-[380px]:text-[12.5px] sm:text-sm'
+                  : isPureList
+                    ? 'text-[15.5px] min-[380px]:text-[16.5px] sm:text-lg'
+                    : isRowOnMobile
+                      ? 'text-[15.5px] min-[380px]:text-[16.5px] sm:text-sm md:text-[15px]'
+                      : isThreeColMobile
+                        ? 'text-[12.5px] min-[380px]:text-[13px] sm:text-sm md:text-[15px]'
+                        : isMini
+                          ? 'text-xs sm:text-[13px]'
+                          : 'text-[13.5px] min-[380px]:text-sm sm:text-[15px] md:text-base'
+              }`}
+            />
           </div>
         </div>
         
         {/* Price Row */}
-        <div className={`${isThreeColMobile || isMini ? 'mt-1.5 sm:mt-2 pt-1.5 flex-wrap sm:flex-nowrap' : 'mt-2 pt-1.5'} border-t border-gray-100 flex items-center justify-between gap-1`}>
-          {/* Left: Prices (stacked vertically for mini sample cards) */}
-          <div className={isMini ? 'flex flex-col items-start justify-center gap-0.5 min-h-[2.4rem] sm:min-h-[2.7rem] min-w-0' : `flex flex-wrap items-baseline ${isThreeColMobile ? 'gap-x-1 sm:gap-x-1.5' : 'gap-x-1.5'} gap-y-0.5 min-w-0`}>
+        <div className={`${isMiniRow ? 'mt-1 pt-1' : isThreeColMobile || isMini ? 'mt-1.5 sm:mt-2 pt-1.5 flex-wrap sm:flex-nowrap' : 'mt-2 pt-1.5'} border-t border-gray-100 flex items-center justify-between gap-1`}>
+          {/* Left: Prices */}
+          <div className={isMini && !isMiniRow ? 'flex flex-col items-start justify-center gap-0.5 min-h-[2.4rem] sm:min-h-[2.7rem] min-w-0' : `flex flex-wrap items-baseline ${isThreeColMobile || isMiniRow ? 'gap-x-1 sm:gap-x-1.5' : 'gap-x-1.5'} gap-y-0.5 min-w-0`}>
             <span className={`font-black ${isExpired ? 'text-gray-500' : 'text-emerald-600'} leading-none ${
-              isListMode
-                ? 'text-xl min-[380px]:text-2xl'
-                : isRowOnMobile
-                  ? 'text-xl min-[380px]:text-2xl sm:text-xl'
-                  : isThreeColMobile
-                    ? 'text-[15px] min-[400px]:text-[16.5px] sm:text-xl'
-                    : isMini
-                      ? 'text-[15px] sm:text-lg'
-                      : 'text-lg sm:text-xl'
+              isMiniRow
+                ? 'text-[15px] min-[380px]:text-[16px] sm:text-lg'
+                : isPureList
+                  ? 'text-xl min-[380px]:text-2xl'
+                  : isRowOnMobile
+                    ? 'text-xl min-[380px]:text-2xl sm:text-xl'
+                    : isThreeColMobile
+                      ? 'text-[15px] min-[400px]:text-[16.5px] sm:text-xl'
+                      : isMini
+                        ? 'text-[15px] sm:text-lg'
+                        : 'text-lg sm:text-xl'
             } shrink-0 whitespace-nowrap`}>
               {product.newPrice} <span className="text-[0.8em] font-bold">₼</span>
             </span>
             {product.oldPrice && product.oldPrice !== '---' && (
               <span className={`text-red-500 line-through leading-none font-semibold ${
-                isListMode
-                  ? 'text-xs min-[380px]:text-sm'
-                  : isRowOnMobile
-                    ? 'text-xs min-[380px]:text-sm sm:text-sm'
-                    : isThreeColMobile
-                      ? 'text-[10.5px] min-[400px]:text-[11.5px] sm:text-sm'
-                      : isMini
-                        ? 'text-[11px] sm:text-xs'
-                        : 'text-xs sm:text-sm'
+                isMiniRow
+                  ? 'text-[10px] min-[380px]:text-[11px] sm:text-xs'
+                  : isPureList
+                    ? 'text-xs min-[380px]:text-sm'
+                    : isRowOnMobile
+                      ? 'text-xs min-[380px]:text-sm sm:text-sm'
+                      : isThreeColMobile
+                        ? 'text-[10.5px] min-[400px]:text-[11.5px] sm:text-sm'
+                        : isMini
+                          ? 'text-[11px] sm:text-xs'
+                          : 'text-xs sm:text-sm'
               } shrink-0 whitespace-nowrap`}>
                 {product.oldPrice}
               </span>
             )}
           </div>
-
-          {/* Right: Clock Icon & Remaining Days badge (hidden when hideCountdown or 3-col grid mode is active) */}
-          {!hideCountdown && !isThreeColMobile && countdownInfo && (
-            <div 
-              className="flex items-center gap-0.5 sm:gap-1 shrink-0 select-none ml-auto"
-              title={`Bitmə tarixi: ${countdownInfo.formattedDate} (${countdownInfo.daysLeft <= 0 ? (countdownInfo.daysLeft === 0 ? 'Bu gün bitir' : 'Bitib') : `${countdownInfo.daysLeft} gün qaldı`})`}
-            >
-              <div className={`${isThreeColMobile ? 'w-2.5 h-2.5 sm:w-4 sm:h-4' : 'w-3.5 h-3.5 sm:w-4 sm:h-4'} rounded-full flex items-center justify-center shrink-0`}>
-                <Clock className={`${isThreeColMobile ? 'w-2.5 h-2.5 sm:w-3.5 sm:h-3.5' : 'w-3 h-3 sm:w-3.5 sm:h-3.5'} ${countdownInfo.iconColor}`} strokeWidth={2.2} />
-              </div>
-              <span className={`${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5'} font-bold py-0.5 rounded border leading-none shrink-0 ${countdownInfo.badgeStyle}`}>
-                {countdownInfo.label}
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </div>
