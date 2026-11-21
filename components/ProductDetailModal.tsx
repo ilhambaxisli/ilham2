@@ -62,6 +62,7 @@ interface ProductImageSlideProps {
   secondaryFallbackSrc?: string;
   alt: string;
   isExpired: boolean;
+  compactHeight?: boolean;
   children?: React.ReactNode;
 }
 
@@ -71,6 +72,7 @@ const ProductImageSlide: React.FC<ProductImageSlideProps> = ({
   secondaryFallbackSrc,
   alt,
   isExpired,
+  compactHeight = false,
   children,
 }) => {
   const [fallbackStep, setFallbackStep] = useState<0 | 1 | 2 | 3>(0);
@@ -88,7 +90,7 @@ const ProductImageSlide: React.FC<ProductImageSlideProps> = ({
         : '';
 
   return (
-    <div className="relative w-full h-52 sm:h-60 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
+    <div className={`relative w-full ${compactHeight ? 'h-40 sm:h-48' : 'h-52 sm:h-60'} bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden transition-[height] duration-150`}>
       {fallbackStep < 3 && effectiveSrc ? (
         <img
           src={effectiveSrc}
@@ -833,7 +835,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     return results.sort((a, b) => b.diff - a.diff);
   }, [allProductsPriceIndex]);
 
-  const openPriceComparisonPopup = useCallback((prod: DiscountProduct, explicitFallbackImg?: string) => {
+  const openPriceComparisonPopup = useCallback((prod: DiscountProduct, explicitFallbackImg?: string, fallbackMarketId?: string) => {
     const key = (prod.productName || '').trim().toLowerCase();
     if (!key) return;
     const candidates = allProductsPriceIndex.get(key) || [];
@@ -869,7 +871,12 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     });
 
     const variants = Array.from(byMarket.values());
-    if (variants.length < 2) return;
+    if (variants.length < 2) {
+      if (fallbackMarketId) {
+        onCompareClick(fallbackMarketId, prod.productName);
+      }
+      return;
+    }
 
     setQuickOpportunityItem({
       productName: prod.productName,
@@ -877,7 +884,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       imageUrl: bestImg,
       variants
     });
-  }, [allProductsPriceIndex]);
+  }, [allProductsPriceIndex, onCompareClick]);
 
   // Keep comparisonData for scroll overflow if needed when in Fürsətlər mode with >2 alternatives
   const comparisonData = useMemo(() => {
@@ -1203,6 +1210,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                           secondaryFallbackSrc={bingImgUrl200}
                           alt={cleanName}
                           isExpired={isExpired}
+                          compactHeight={slideComparisons.length > 0}
                         >
                           <>
                             {/* Double-tap Center Heart Burst Animation */}
@@ -1262,7 +1270,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                         {/* Product Info Content */}
                         <div
                           data-modal-scrollable="true"
-                          className={`px-3 pt-2 pb-2 sm:px-4 sm:pt-2.5 sm:pb-2.5 flex-1 min-h-0 flex flex-col justify-between ${isCurrentSlide && showComparisons && comparisonData.length > 0 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}
+                          className={`px-3 pt-2 pb-2 sm:px-4 sm:pt-2.5 sm:pb-2.5 flex-1 min-h-0 flex flex-col justify-between ${isCurrentSlide && ((showComparisons && comparisonData.length > 0) || slideComparisons.length > 0) ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}
                         >
                           <div>
                             <div className="flex items-center justify-between gap-1.5 shrink-0">
@@ -1331,37 +1339,102 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                               </div>
                             </div>
 
-                            {slideComparisons.length > 0 && (
-                              <div className="mt-2 space-y-1">
-                                <div className="flex items-center gap-1 text-[9.5px] font-extrabold text-emerald-700 uppercase tracking-wide">
-                                  <TrendingDown className="w-3 h-3 text-emerald-600 shrink-0" />
-                                  <span>Burada daha ucuz var:</span>
+                            {slideComparisons.length > 0 && (() => {
+                              const topComparisons = slideComparisons.slice(0, 2);
+                              const maxSaving = slideComparisons[0]?.diff ?? 0;
+                              const isSingle = topComparisons.length === 1;
+                              return (
+                                <div className="mt-2.5 space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1 text-[10.5px] sm:text-[11px] font-extrabold text-emerald-700 uppercase tracking-wide min-w-0">
+                                      <TrendingDown className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                      <span className="truncate">Burada daha ucuz var</span>
+                                    </div>
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10.5px] sm:text-[11px] font-black tracking-tight shadow-2xs shrink-0 whitespace-nowrap">
+                                      {maxSaving.toFixed(2)} ₼ qənaət
+                                    </span>
+                                  </div>
+
+                                  {isSingle ? (() => {
+                                    const compItem = topComparisons[0];
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openPriceComparisonPopup(p, explicitImgUrl, compItem.marketId);
+                                        }}
+                                        className="w-full p-2.5 sm:p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-green-50 hover:from-emerald-100 hover:to-green-100 border-2 border-emerald-400/80 shadow-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between gap-2.5 text-left group"
+                                        title="Qiymət fərqini göstər"
+                                      >
+                                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white border border-emerald-200/90 flex items-center justify-center overflow-hidden shadow-2xs shrink-0">
+                                            {compItem.logoUrl ? (
+                                              <img src={compItem.logoUrl} alt={compItem.marketName} className="w-full h-full object-contain p-1" />
+                                            ) : (
+                                              <span className="text-xs font-black text-emerald-700">{compItem.logoPlaceholder}</span>
+                                            )}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <div className="text-xs sm:text-sm font-black text-gray-900 truncate leading-tight">
+                                              {compItem.marketName}
+                                            </div>
+                                            <div className="text-[11px] sm:text-xs font-extrabold text-emerald-700 mt-0.5 leading-tight">
+                                              -{compItem.diff.toFixed(2)} ₼ daha ucuz
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight leading-none whitespace-nowrap">
+                                            {compItem.product.newPrice} <span className="text-xs sm:text-sm">₼</span>
+                                          </span>
+                                          <ArrowRight className="w-4 h-4 text-emerald-600 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                                        </div>
+                                      </button>
+                                    );
+                                  })() : (
+                                    <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                                      {topComparisons.map((compItem, cIdx) => (
+                                        <button
+                                          key={cIdx}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openPriceComparisonPopup(p, explicitImgUrl, compItem.marketId);
+                                          }}
+                                          className="p-2 sm:p-2.5 rounded-xl bg-emerald-50/95 hover:bg-emerald-100 border border-emerald-300/90 shadow-xs transition-all active:scale-[0.98] cursor-pointer flex flex-col justify-between gap-2 text-left group min-w-0"
+                                          title="Qiymət fərqini göstər"
+                                        >
+                                          <div className="flex items-center gap-1.5 min-w-0 w-full">
+                                            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white border border-emerald-200/80 flex items-center justify-center overflow-hidden shadow-2xs shrink-0">
+                                              {compItem.logoUrl ? (
+                                                <img src={compItem.logoUrl} alt={compItem.marketName} className="w-full h-full object-contain p-0.5" />
+                                              ) : (
+                                                <span className="text-[10px] font-black text-emerald-700">{compItem.logoPlaceholder}</span>
+                                              )}
+                                            </div>
+                                            <span className="text-xs sm:text-[13px] font-black text-gray-900 truncate flex-1">
+                                              {compItem.marketName}
+                                            </span>
+                                            <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                                          </div>
+
+                                          <div className="flex items-center justify-between gap-1 w-full">
+                                            <span className="text-sm sm:text-base font-black text-emerald-700 leading-none whitespace-nowrap">
+                                              {compItem.product.newPrice} ₼
+                                            </span>
+                                            <span className="px-1.5 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] sm:text-[11px] font-black leading-none whitespace-nowrap shrink-0">
+                                              -{compItem.diff.toFixed(2)} ₼
+                                            </span>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {slideComparisons.slice(0, 2).map((compItem, cIdx) => (
-                                    <button
-                                      key={cIdx}
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openPriceComparisonPopup(p, explicitImgUrl);
-                                      }}
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/90 text-emerald-900 text-[10.5px] font-bold shadow-2xs transition-all active:scale-95 cursor-pointer max-w-full"
-                                      title="Qiymət fərqini göstər"
-                                    >
-                                      {compItem.logoUrl ? (
-                                        <img src={compItem.logoUrl} alt={compItem.marketName} className="w-3 h-3 object-contain rounded-xs shrink-0" />
-                                      ) : (
-                                        <span className="text-[8.5px] font-black text-emerald-700 shrink-0">{compItem.logoPlaceholder}</span>
-                                      )}
-                                      <span className="truncate">{compItem.marketName}</span>
-                                      <span className="font-black text-emerald-700 shrink-0">{compItem.product.newPrice} ₼</span>
-                                      <ArrowRight className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
+                              );
+                            })()}
                             </div>
                           </div>
 

@@ -165,7 +165,7 @@ export const extractQuantityAndCleanName = (productName: string): CleanProductIn
   const raw = productName.trim();
 
   // Pattern matches quantity/weight tokens like "600 q", "400 q", "1 kg", "100 qr", "250 ml", "1 lt", etc.
-  const pattern = /(?:^|\s|\()(\d+(?:[.,]\d+)?\s*(?:[xX*]\s*\d+(?:[.,]\d+)?)?\s*(?:kq|kg|qr|gr|q|g|ml|litr|lt|l|ədəd|eded|əd|ed|dənə|dene|paçka|pack|əd\.?))(?:\)|$|\s)/i;
+  const pattern = /(?:^|\s|\()(\d+(?:[.,]\d+)?\s*(?:[xX*]\s*\d+(?:[.,]\d+)?)?\s*(?:kq|kg|qr|gr|q|g|ml|litr|lt|l|[əƏ]d[əƏ]dl[iİı]|[əƏ]d[əƏ]d|ededl[iİı]|eded|[əƏ]dl[iİı]|edl[iİı]|[əƏ]d\.?|[əƏ]d|ed|dənə|dene|paçka|pack))(?:\)|$|\s)/i;
 
   const match = raw.match(pattern);
   if (match && match[1]) {
@@ -187,7 +187,8 @@ export const extractQuantityAndCleanName = (productName: string): CleanProductIn
       .trim();
 
     if (cleaned.length > 0) {
-      return { cleanName: cleaned, quantity: matchedToken };
+      const badgeQuantity = matchedToken.replace(/\s*(?:[əƏ]d[əƏ]dl[iİı]|[əƏ]d[əƏ]d|ededl[iİı]|eded|[əƏ]dl[iİı]|edl[iİı]|[əƏ]d\.?|ed)$/i, '').trim() || matchedToken;
+      return { cleanName: cleaned, quantity: badgeQuantity };
     }
   }
 

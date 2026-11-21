@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import Header from './components/Header';
 import BottomSearchDock from './components/BottomSearchDock';
 import ProductCard, { extractProductEndDate, calculateDaysLeft } from './components/ProductCard';
@@ -870,6 +870,9 @@ const App: React.FC = () => {
   };
 
   const handleSelectMarket = (marketId: string | null, options?: { preserveSearchReturn?: boolean }) => {
+    if (marketId !== null) {
+      captureHomeScrollBeforeLeave();
+    }
     if (!options?.preserveSearchReturn) {
       setSearchReturnState(null);
     }
@@ -878,7 +881,9 @@ const App: React.FC = () => {
     setActiveCategoryDropdown(null);
     setIsMarketSwitcherOpen(false);
     setVisibleDetailCount(24);
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    if (marketId !== null) {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
   };
   const [banner1, setBanner1] = useState<BannerData>(INITIAL_BANNER_1);
   const [banner2, setBanner2] = useState<BannerData>(INITIAL_BANNER_2);
@@ -898,6 +903,7 @@ const App: React.FC = () => {
   const cheaperTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [openSearchTrigger, setOpenSearchTrigger] = useState(0);
   const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
   const [activeBannerId, setActiveBannerId] = useState<'banner-1' | 'banner-2'>('banner-1');
   const [isAddMarketModalOpen, setIsAddMarketModalOpen] = useState(false);
@@ -1041,6 +1047,9 @@ const App: React.FC = () => {
         clearTimeout(cheaperTimeoutRef.current);
         cheaperTimeoutRef.current = null;
     }
+    if (active) {
+      captureHomeScrollBeforeLeave();
+    }
     setShowCheaperOnly(active);
     if (active) {
       setSearchReturnState(null);
@@ -1054,7 +1063,8 @@ const App: React.FC = () => {
       setIsSearching(false);
       setIsProcessingCheaper(true);
       setDeferredCheaperOnly(false);
-      setVisibleProductCount(6); 
+      setVisibleProductCount(6);
+      window.scrollTo({ top: 0, behavior: 'auto' });
       cheaperTimeoutRef.current = setTimeout(() => { setDeferredCheaperOnly(true); }, 50); 
     } else {
       setDeferredCheaperOnly(false);
@@ -1066,6 +1076,9 @@ const App: React.FC = () => {
   const handleSearchQueryChange = (q: string) => {
     const wasSearchable = searchQuery.trim().length >= 2;
     const isNowSearchable = q.trim().length >= 2;
+    if (isNowSearchable && !wasSearchable) {
+      captureHomeScrollBeforeLeave();
+    }
     setSearchQuery(q);
     if (isNowSearchable) {
       setSearchReturnState(null);
@@ -1093,6 +1106,9 @@ const App: React.FC = () => {
   const handleQuickSearch = (q: string) => {
     const wasSearchable = searchQuery.trim().length >= 2;
     const isNowSearchable = q.trim().length >= 2;
+    if (isNowSearchable && !wasSearchable) {
+      captureHomeScrollBeforeLeave();
+    }
     setSearchQuery(q);
     setDebouncedSearchQuery(isNowSearchable ? q : '');
     setIsSearching(false);
@@ -1488,14 +1504,25 @@ const App: React.FC = () => {
               });
           });
       });
-      const results = Array.from(groups.values()).filter(g => {
-          if (g.variants.length < 2) return false;
-          const prices = g.variants.map(v => v.price);
-          const minP = Math.min(...prices);
-          const maxP = Math.max(...prices);
-          return maxP > minP;
+      const results = Array.from(groups.values())
+          .map(g => {
+              if (g.variants.length < 2) return { group: g, saving: 0 };
+              let minP = Infinity;
+              let maxP = -Infinity;
+              for (const v of g.variants) {
+                  if (v.price < minP) minP = v.price;
+                  if (v.price > maxP) maxP = v.price;
+              }
+              return { group: g, saving: maxP - minP };
+          })
+          .filter(item => item.saving > 0.0001);
+
+      results.sort((a, b) => {
+          if (Math.abs(b.saving - a.saving) > 0.0001) return b.saving - a.saving;
+          return (a.group.productName || '').localeCompare(b.group.productName || '');
       });
-      return results.sort((a,b) => (a.productName || '').localeCompare(b.productName || ''));
+
+      return results.map(item => item.group);
   }, [markets, deferredCheaperOnly, debouncedSearchQuery, debouncedMaxPrice]);
   
   const isFavorite = (productName: string, marketId: string) => {
@@ -1748,6 +1775,8 @@ const App: React.FC = () => {
   };
 
   const handleResetApp = () => {
+    homeScrollYRef.current = 0;
+    suspendHomeCaptureRef.current = true;
     setActiveMarketId(null);
     setSelectedCategoryFilter(null);
     setActiveCategoryDropdown(null);
@@ -1798,6 +1827,52 @@ const App: React.FC = () => {
     debouncedSearchQuery.trim().length >= 2 ||
     debouncedMaxPrice.length > 0 ||
     showCheaperOnly;
+
+  const isHomeView = !isLoading && activeMarketId === null && !showFavorites && !isSearchViewActive;
+  const homeScrollYRef = useRef<number>(0);
+  const wasHomeViewRef = useRef<boolean>(false);
+  const suspendHomeCaptureRef = useRef<boolean>(false);
+
+  const captureHomeScrollBeforeLeave = () => {
+    if (!isLoading && activeMarketId === null && !showFavorites && !isSearchViewActive) {
+      homeScrollYRef.current = window.scrollY;
+      suspendHomeCaptureRef.current = true;
+    }
+  };
+
+  useLayoutEffect(() => {
+    let r1 = 0;
+    let r2 = 0;
+    if (isHomeView && !wasHomeViewRef.current) {
+      const targetY = homeScrollYRef.current || 0;
+      suspendHomeCaptureRef.current = true;
+      window.scrollTo({ top: targetY, behavior: 'auto' });
+      r1 = requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, behavior: 'auto' });
+        r2 = requestAnimationFrame(() => {
+          window.scrollTo({ top: targetY, behavior: 'auto' });
+          suspendHomeCaptureRef.current = false;
+        });
+      });
+    } else if (isHomeView) {
+      suspendHomeCaptureRef.current = false;
+    }
+    wasHomeViewRef.current = isHomeView;
+    return () => {
+      if (r1) cancelAnimationFrame(r1);
+      if (r2) cancelAnimationFrame(r2);
+    };
+  }, [isHomeView]);
+
+  useEffect(() => {
+    if (!isHomeView) return;
+    const onHomeScroll = () => {
+      if (suspendHomeCaptureRef.current) return;
+      homeScrollYRef.current = window.scrollY;
+    };
+    window.addEventListener('scroll', onHomeScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onHomeScroll);
+  }, [isHomeView]);
 
   useEffect(() => {
     if (!isSearchViewActive || activeMarketId !== null || showFavorites) {
@@ -3306,6 +3381,15 @@ const App: React.FC = () => {
 
                         {/* Quick-Search Row below sample products */}
                         <div className="flex flex-wrap items-center gap-2 px-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setOpenSearchTrigger(prev => prev + 1)}
+                            className="inline-flex items-center justify-center w-7 h-7 sm:w-[30px] sm:h-[30px] p-0 bg-transparent border-0 text-black hover:opacity-75 active:scale-90 transition-all cursor-pointer shrink-0"
+                            title="Məhsul axtar"
+                            aria-label="Məhsul axtar"
+                          >
+                            <Search className="w-[18px] h-[18px] sm:w-5 sm:h-5 stroke-[2.4]" />
+                          </button>
                           {['yağ', 'kolbasa', 'cips'].map((term, idx) => {
                             const tagColor = CATEGORY_TAG_COLORS[idx % CATEGORY_TAG_COLORS.length] || CATEGORY_TAG_COLORS[0];
                             return (
@@ -3716,11 +3800,21 @@ const App: React.FC = () => {
           onSearchChange={handleSearchQueryChange}
           onQuickSearch={handleQuickSearch}
           maxPrice={maxPrice}
-          onMaxPriceChange={(p) => { setMaxPrice(p); setIsSearching(true); }}
+          onMaxPriceChange={(p) => {
+            if (!maxPrice && p.trim().length > 0) {
+              captureHomeScrollBeforeLeave();
+              window.scrollTo({ top: 0, behavior: 'auto' });
+            }
+            setMaxPrice(p);
+            setIsSearching(true);
+          }}
           showCheaperOnly={showCheaperOnly}
           onShowCheaperOnlyChange={handleShowCheaperOnlyChange}
           showFavorites={showFavorites}
           onShowFavoritesChange={(active) => {
+             if (active) {
+               captureHomeScrollBeforeLeave();
+             }
              setShowFavorites(active);
              if (active) {
                setSearchReturnState(null);
@@ -3748,6 +3842,7 @@ const App: React.FC = () => {
             })
             .filter(m => m.productCount > 0)}
           onOpenMarketSwipeFeed={handleOpenMarketSwipeFeed}
+          openSearchTrigger={openSearchTrigger}
         />
       )}
 
@@ -3814,7 +3909,6 @@ const App: React.FC = () => {
           initialIndex={opportunityModalIndex ?? 0}
           allMarkets={markets}
           onSelectIndex={(newIdx) => setOpportunityModalIndex(newIdx)}
-          onMarketClick={handleCompareClick}
           checkIsFavorite={(productName, marketId) => isFavorite(productName, marketId)}
           onToggleFavorite={(prod, marketId) => toggleFavorite(prod, marketId)}
           onEnsureFavorite={(prod, marketId) => ensureFavorite(prod, marketId)}

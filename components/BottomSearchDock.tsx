@@ -22,6 +22,7 @@ interface BottomSearchDockProps {
   favoritesCount: number;
   markets?: DockMarketOption[];
   onOpenMarketSwipeFeed?: (marketId: string) => void;
+  openSearchTrigger?: number;
 }
 
 const BottomSearchDock: React.FC<BottomSearchDockProps> = ({
@@ -34,7 +35,8 @@ const BottomSearchDock: React.FC<BottomSearchDockProps> = ({
   onShowFavoritesChange,
   favoritesCount,
   markets = [],
-  onOpenMarketSwipeFeed
+  onOpenMarketSwipeFeed,
+  openSearchTrigger = 0
 }) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const prevQueryRef = useRef<string>(searchQuery);
@@ -48,6 +50,17 @@ const BottomSearchDock: React.FC<BottomSearchDockProps> = ({
     }
     prevQueryRef.current = searchQuery;
   }, [searchQuery]);
+
+  // Open and focus search bar when triggered externally (e.g. quick-search icon on Home)
+  useEffect(() => {
+    if (openSearchTrigger > 0) {
+      setIsMarketFeedOpen(false);
+      setIsSearchOpen(true);
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 30);
+    }
+  }, [openSearchTrigger]);
 
   const handleToggleSearch = () => {
     setIsMarketFeedOpen(false);

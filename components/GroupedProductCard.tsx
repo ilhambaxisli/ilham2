@@ -54,6 +54,7 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
   // Find min price to highlight
   const minPrice = Math.min(...variants.map(v => v.price));
   const sortedVariants = [...variants].sort((a, b) => a.price - b.price);
+  const cheapestVariant = sortedVariants[0];
 
   const autoBingUrl = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
   const trimmedExplicit = imageUrl?.trim();
@@ -69,11 +70,36 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
       style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
       className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg border border-gray-100 transition-all duration-300 flex flex-col group relative cursor-pointer select-none"
     >
-      {/* Saving Badge */}
+      {/* Top-Left: Cheapest Market Logo */}
+      {cheapestVariant && (
+        <div
+          className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-20 w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-200/80 flex items-center justify-center overflow-hidden pointer-events-none"
+          title={`Ən ucuz: ${cheapestVariant.marketName}`}
+        >
+          {cheapestVariant.logoUrl ? (
+            <img
+              src={cheapestVariant.logoUrl}
+              alt={cheapestVariant.marketName}
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <span className={`text-[10px] sm:text-xs font-black text-${cheapestVariant.themeColor}-700`}>
+              {cheapestVariant.logoPlaceholder}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Top-Right: Prominent Saving Badge (Amount on top + "qənaət et" below) */}
       {saving > 0 && (
-         <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-bl-lg z-10 shadow-xs">
-            {saving.toFixed(2)} ₼ Qənaət
-         </div>
+        <div className="absolute top-0 right-0 z-20 bg-emerald-600 text-white px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-bl-xl shadow-md flex flex-col items-center justify-center text-center leading-none border-b border-l border-emerald-700/25 pointer-events-none">
+          <span className="text-xs sm:text-sm font-black tracking-tight whitespace-nowrap drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)]">
+            {saving.toFixed(2)} ₼
+          </span>
+          <span className="text-[9.5px] sm:text-[10.5px] font-bold tracking-tight text-emerald-50 mt-0.5 whitespace-nowrap">
+            qənaət et
+          </span>
+        </div>
       )}
 
       {/* Image Section */}
@@ -82,7 +108,7 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
           <img 
             src={finalImageUrl} 
             alt={productName}
-            className="w-full h-full object-contain p-3 sm:p-4 group-hover:scale-105 transition-transform duration-500"
+            className="w-full h-full object-contain mix-blend-multiply pt-7 px-3 pb-2.5 sm:pt-8 sm:px-4 sm:pb-3 group-hover:scale-105 transition-transform duration-500"
             onError={() => {
               if (trimmedExplicit && !useFallbackBing) {
                 setUseFallbackBing(true);
