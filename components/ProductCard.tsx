@@ -15,7 +15,10 @@ import {
   Package,
   Edit2,
   Heart,
-  Clock
+  Clock,
+  Download,
+  Loader2,
+  Check
 } from 'lucide-react';
 
 interface ProductCardProps {
@@ -38,6 +41,7 @@ interface ProductCardProps {
   isRowOnMobile?: boolean;
   isListMode?: boolean;
   isThreeColMobile?: boolean;
+  onExportInstagram?: () => void | Promise<void>;
 }
 
 let sharedMeasureCanvasCtx: CanvasRenderingContext2D | null = null;
@@ -395,6 +399,49 @@ export const getExplicitProductImageUrl = (product?: Partial<DiscountProduct> | 
   return undefined;
 };
 
+const AdminIgExportButton: React.FC<{
+  onExportInstagram: () => void | Promise<void>;
+  isMini?: boolean;
+}> = ({ onExportInstagram, isMini }) => {
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation();
+        if (exporting) return;
+        setExporting(true);
+        try {
+          await onExportInstagram();
+          setExported(true);
+          window.setTimeout(() => setExported(false), 1800);
+        } catch {
+          // Handled silently so global error handler is never triggered
+        } finally {
+          setExporting(false);
+        }
+      }}
+      className={`absolute z-30 ${isMini ? 'top-1 right-1 px-1 py-0.5 text-[8.5px]' : 'top-1.5 right-1.5 px-1.5 py-0.5 text-[9.5px] sm:text-[10px]'} inline-flex items-center gap-0.5 rounded-md font-extrabold shadow-xs border transition-all cursor-pointer active:scale-95 ${
+        exported
+          ? 'bg-emerald-600 text-white border-emerald-700'
+          : 'bg-white/95 hover:bg-emerald-600 text-emerald-700 hover:text-white border-emerald-200'
+      }`}
+      title="Instagram şəkli kimi indir"
+    >
+      {exporting ? (
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+      ) : exported ? (
+        <Check className="w-2.5 h-2.5" />
+      ) : (
+        <Download className="w-2.5 h-2.5" />
+      )}
+      <span>IG</span>
+    </button>
+  );
+};
+
 const ProductCard: React.FC<ProductCardProps> = ({ 
   product, 
   accentColor, 
@@ -414,7 +461,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   showMarketRibbon = false,
   isRowOnMobile = false,
   isListMode = false,
-  isThreeColMobile = false
+  isThreeColMobile = false,
+  onExportInstagram
 }) => {
   const [imageError, setImageError] = useState(false);
   const isMini = variant === 'mini';
@@ -541,6 +589,10 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
           >
             <Edit2 className={isMini ? "w-2.5 h-2.5 sm:w-3 sm:h-3" : "w-3 h-3"} />
           </button>
+        )}
+
+        {isAdmin && onExportInstagram && (
+          <AdminIgExportButton onExportInstagram={onExportInstagram} isMini={isMini || isMiniRow} />
         )}
 
         {/* Product Image Container */}

@@ -7,18 +7,17 @@ import GroupedProductCard from './components/GroupedProductCard';
 import SearchMarketResultCard from './components/SearchMarketResultCard';
 import ScannerModal from './components/ScannerModal';
 import AdminLoginModal from './components/AdminLoginModal';
-import Banner from './components/Banner';
-import BannerEditorModal from './components/BannerEditorModal';
 import AddMarketModal from './components/AddMarketModal';
 import EditMarketModal from './components/EditMarketModal';
 import EditProductModal from './components/EditProductModal';
 import DatabaseModal from './components/DatabaseModal';
 import ProductDetailModal from './components/ProductDetailModal';
 import OpportunityDetailModal from './components/OpportunityDetailModal';
-import SocialDealsModal from './components/SocialDealsModal';
-import { MarketData, DiscountProduct, BannerData, SupabaseConfig, Catalog, FavoriteItem } from './types';
+import OpportunityInstagramModal, { exportOpportunityPosterPng, exportGeneralProductPosterPng } from './components/OpportunityInstagramModal';
+import BannerEditorModal, { normalizeAdLinkUrl } from './components/BannerEditorModal';
+import { MarketData, DiscountProduct, SupabaseConfig, Catalog, FavoriteItem, BannerData } from './types';
 import * as supabaseService from './services/supabase';
-import { RefreshCw, ShoppingBag, ArrowRight, Loader2, Plus, Trash2, Search, Database, Home, ChevronRight, Store, Grid3x3, Grid2x2, XCircle, ChevronUp, ChevronDown, Edit, Calendar, Clock, AlertTriangle, CheckCircle2, ShoppingCart, TrendingDown, ArrowLeft, Heart, RotateCcw, Instagram, X, Check, ChevronLeft, Sparkles, ExternalLink, Tag, Percent } from 'lucide-react';
+import { RefreshCw, ShoppingBag, ArrowRight, Loader2, Plus, Trash2, Search, Database, Home, ChevronRight, Store, Grid3x3, Grid2x2, XCircle, ChevronUp, ChevronDown, Edit, Calendar, Clock, AlertTriangle, CheckCircle2, ShoppingCart, TrendingDown, ArrowLeft, Heart, RotateCcw, X, Check, ChevronLeft, Sparkles, Tag, Percent, Download, Megaphone } from 'lucide-react';
 
 const INITIAL_MARKETS: MarketData[] = [
   {
@@ -134,22 +133,6 @@ const isMarketFullyExpired = (market: MarketData): boolean => {
   return true;
 };
 
-const INITIAL_BANNER_1: BannerData = {
-  id: 'banner-1',
-  isVisible: false,
-  title: '',
-  imageUrl: '',
-  link: ''
-};
-
-const INITIAL_BANNER_2: BannerData = {
-  id: 'banner-2',
-  isVisible: false,
-  title: '',
-  imageUrl: '',
-  link: ''
-};
-
 const DEFAULT_SUPABASE_URL = "https://rnqdjdxokcpfwsqkzrfu.supabase.co";
 const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJucWRqZHhva2NwZndzcWt6cmZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwODY0NDAsImV4cCI6MjA3OTY2MjQ0MH0.d1PsO4oMCU2SWDdey5yjVmVzet2uXwKbgbEkQJ9CJFM";
 
@@ -163,12 +146,6 @@ const CartLoading = () => (
     <p className="text-xs text-gray-400 mt-1.5 font-semibold animate-pulse">Yüklənir...</p>
   </div>
 );
-
-const getEmbedUrl = (url: string) => {
-  if (!url) return '';
-  const clean = url.split('?')[0].replace(/\/$/, '');
-  return `${clean}/embed/`;
-};
 
 const formatMarketButtonName = (name: string) => {
   const trimmed = (name || '').trim();
@@ -270,410 +247,7 @@ const normalizeTextForSearch = (text: string): string => {
     .replace(/ç/g, 'c');
 };
 
-interface InstagramThumbnailProps {
-  postUrl: string;
-  index: number;
-  marketIndex?: number;
-  onClick: () => void;
-}
 
-const InstagramThumbnail: React.FC<InstagramThumbnailProps> = ({ postUrl, index, marketIndex = 0, onClick }) => {
-  const isInstagram = postUrl.includes('instagram.com');
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.5);
-  const [isLoaded, setIsLoaded] = useState(false);
-  // İlk 2 marketin ilk 2 postu dərhal, digərləri isə ekrana yaxınlaşdıqda yüklənsin
-  const isPriority = marketIndex < 2 && index < 2;
-  const [isVisible, setIsVisible] = useState(isPriority);
-
-  useEffect(() => {
-    if (isVisible) return;
-    const el = containerRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') {
-      setIsVisible(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setIsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '300px' } // ekrana 300px qalmış yükləməyə başla
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [isVisible]);
-
-  useEffect(() => {
-    if (!isVisible) return;
-    const timer = setTimeout(() => {
-      setIsLoaded(true);
-    }, 3500);
-    return () => clearTimeout(timer);
-  }, [isVisible]);
-
-  useEffect(() => {
-    if (!isInstagram || !containerRef.current) return;
-    const updateSize = () => {
-      if (containerRef.current) {
-        const width = containerRef.current.offsetWidth;
-        if (width > 0) {
-          setScale(width / 320);
-        }
-      }
-    };
-    updateSize();
-    const ro = new ResizeObserver(updateSize);
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, [isInstagram]);
-
-  return (
-    <div 
-      ref={containerRef}
-      onClick={onClick}
-      className="w-full aspect-square rounded-lg sm:rounded-xl overflow-hidden cursor-pointer hover:opacity-95 transition-all bg-gray-100 relative group/ig border border-gray-100 shadow-2xs hover:shadow-xs hover:scale-[1.03] active:scale-95"
-    >
-      {/* Loading Spinner */}
-      {!isLoaded && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-50 pointer-events-none">
-          <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-pink-400 animate-spin" />
-        </div>
-      )}
-
-      {isVisible ? (
-        isInstagram ? (
-          <div className="w-full h-full relative overflow-hidden bg-gray-100 flex items-center justify-center pointer-events-none">
-            {/* Scaled Instagram Embed Viewport */}
-            <div 
-              className="absolute top-0 left-0 origin-top-left pointer-events-none"
-              style={{
-                width: '320px',
-                height: '320px',
-                transform: `scale(${scale})`,
-              }}
-            >
-              {/* Shifted so top Instagram header (52px) is hidden, framing the square image */}
-              <div className="absolute top-[-52px] left-0 w-[320px] h-[430px]">
-                <iframe 
-                  src={getEmbedUrl(postUrl)}
-                  loading={isPriority ? "eager" : "lazy"}
-                  className="w-full h-full border-none pointer-events-none"
-                  scrolling="no"
-                  title={`Instagram Fürsət ${index + 1}`}
-                  onLoad={() => setIsLoaded(true)}
-                />
-              </div>
-            </div>
-
-            {/* Clickable overlay & hover effect */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-pink-500/10 via-transparent to-transparent opacity-0 group-hover/ig:opacity-100 transition-opacity pointer-events-none" />
-          </div>
-        ) : (
-          <div className="w-full h-full relative">
-            <img 
-              src={postUrl} 
-              alt={`Fürsət ${index + 1}`} 
-              loading="lazy"
-              className="w-full h-full object-cover group-hover/ig:scale-105 transition-transform duration-500" 
-              referrerPolicy="no-referrer"
-              onLoad={() => setIsLoaded(true)}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "https://cdn-icons-png.flaticon.com/512/174/174855.png";
-                setIsLoaded(true);
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-tr from-pink-500/10 to-transparent opacity-0 group-hover/ig:opacity-100 transition-opacity pointer-events-none" />
-          </div>
-        )
-      ) : (
-        <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-300">
-          <Instagram className="w-4 h-4 text-gray-300" />
-        </div>
-      )}
-
-      {/* Index badge */}
-      <div className="absolute bottom-1 right-1 z-10 bg-black/55 backdrop-blur-xs text-white text-[7px] sm:text-[8px] font-bold px-1 py-0.2 rounded select-none pointer-events-none">
-        #{index + 1}
-      </div>
-    </div>
-  );
-};
-
-interface InstagramModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  posts: string[];
-  marketName: string;
-  initialIndex?: number;
-}
-
-const InstagramViewer: React.FC<InstagramModalProps> = ({ isOpen, onClose, posts, marketName, initialIndex = 0 }) => {
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const [isInitialLoaded, setIsInitialLoaded] = useState(false);
-  const [showRedirectConfirm, setShowRedirectConfirm] = useState(false);
-
-  // Modal açılanda və ya market dəyişəndə sıfırla
-  useEffect(() => {
-    if (isOpen) {
-      setCurrentIndex(initialIndex);
-      setIsInitialLoaded(false);
-      setShowRedirectConfirm(false);
-
-      const timer = setTimeout(() => {
-        setIsInitialLoaded(true);
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, marketName, initialIndex]);
-
-  if (!isOpen || !posts || posts.length === 0) return null;
-
-  // Növbəti posta keçid
-  const handleNext = () => {
-    if (posts.length <= 1) return;
-    setShowRedirectConfirm(false);
-    setCurrentIndex(prev => (prev < posts.length - 1 ? prev + 1 : 0));
-  };
-
-  // Əvvəlki posta keçid
-  const handlePrev = () => {
-    if (posts.length <= 1) return;
-    setShowRedirectConfirm(false);
-    setCurrentIndex(prev => (prev > 0 ? prev - 1 : posts.length - 1));
-  };
-
-  const currentPostUrl = posts[currentIndex] || '';
-
-  return (
-    <div className="fixed inset-0 z-[250] flex items-center justify-center p-2 sm:p-4 select-none">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-xs transition-opacity" onClick={onClose}></div>
-
-      {/* Container with Floating Navigation for larger screens */}
-      <div className="relative flex items-center justify-center w-full max-w-[480px] sm:max-w-[540px]">
-        {/* Floating Left Button for desktop */}
-        {posts.length > 1 && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-            className="hidden sm:flex absolute -left-14 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/95 hover:bg-white text-gray-800 shadow-xl items-center justify-center transition-all hover:scale-110 active:scale-95 z-40 border border-gray-100"
-            title="Əvvəlki"
-          >
-            <ChevronLeft className="w-5 h-5 text-gray-700" />
-          </button>
-        )}
-
-        <div className="relative w-full bg-white rounded-2xl sm:rounded-[24px] overflow-hidden shadow-2xl animate-[fadeIn_0.2s_ease-out] flex flex-col border border-gray-100 max-h-[92vh]">
-          
-          {/* Header - Təmiz və minimal */}
-          <div className="px-3.5 py-2.5 flex items-center justify-between shrink-0 bg-white border-b border-gray-50 select-none">
-            <div className="flex items-center gap-1.5 min-w-0">
-               <div className="w-2 h-2 rounded-full bg-pink-500 shrink-0"></div>
-               <h3 className="text-[11px] font-black text-gray-800 tracking-tight uppercase truncate">{marketName}</h3>
-               {posts.length > 1 && (
-                 <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                   {currentIndex + 1}/{posts.length}
-                 </span>
-               )}
-            </div>
-
-            <div className="flex items-center gap-1 shrink-0">
-              {currentPostUrl && currentPostUrl.includes('instagram.com') && (
-                <button 
-                  type="button"
-                  onClick={() => setShowRedirectConfirm(true)}
-                  className="p-1.5 hover:bg-pink-50 rounded-full text-gray-400 hover:text-pink-600 transition-colors cursor-pointer"
-                  title="Instagram-da aç"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </button>
-              )}
-              <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Visual Content (4:5 Ratio) - Karuselə toxunmaq və şəkilləri vərəqləmək aktivdir */}
-          <div className="relative w-full bg-white overflow-hidden shrink-0 select-none" style={{ aspectRatio: '4/5' }}>
-            {/* Clickable overlay to ask confirmation before redirecting to Instagram */}
-            <div 
-              onClick={() => {
-                if (currentPostUrl) {
-                  setShowRedirectConfirm(true);
-                }
-              }}
-              className="absolute inset-0 z-30 cursor-pointer"
-              title="Instagram postuna baxmaq üçün toxunun"
-            />
-
-            {/* Multi-Slide Track */}
-            <div className="w-full h-full relative">
-              {posts.map((postUrl, idx) => {
-                const offset = idx - currentIndex;
-                const isCurrent = offset === 0;
-                // Only mount iframe for active slide and adjacent slides (±1) to prevent lag and rate limits
-                const shouldRenderContent = Math.abs(offset) <= 1;
-                const isIg = postUrl.includes('instagram.com');
-                return (
-                  <div 
-                    key={`${marketName}-${postUrl}-${idx}`}
-                    className={`absolute inset-0 w-full h-full ${isCurrent ? 'pointer-events-auto' : 'pointer-events-none'}`}
-                    style={{
-                      transform: `translateX(${offset * 100}%)`,
-                      transition: 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
-                    }}
-                  >
-                    {shouldRenderContent ? (
-                      isIg ? (
-                        <div className="absolute top-[-52px] left-0 w-full h-[calc(100%+110px)] pointer-events-none">
-                          <iframe 
-                            src={getEmbedUrl(postUrl)}
-                            className="w-full h-full border-none pointer-events-none"
-                            scrolling="no"
-                            loading={isCurrent ? "eager" : "lazy"}
-                            title={`Instagram Post ${idx + 1}`}
-                            onLoad={() => {
-                              if (idx === currentIndex || idx === initialIndex) {
-                                setIsInitialLoaded(true);
-                              }
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gray-50 pointer-events-none">
-                          <img 
-                            src={postUrl} 
-                            alt={`Fürsət ${idx + 1}`} 
-                            className="w-full h-full object-cover" 
-                            referrerPolicy="no-referrer"
-                            onLoad={() => {
-                              if (idx === currentIndex || idx === initialIndex) {
-                                setIsInitialLoaded(true);
-                              }
-                            }}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = "https://cdn-icons-png.flaticon.com/512/174/174855.png";
-                              setIsInitialLoaded(true);
-                            }}
-                          />
-                        </div>
-                      )
-                    ) : (
-                      <div className="w-full h-full bg-gray-50 flex items-center justify-center">
-                        <Instagram className="w-6 h-6 text-gray-200" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Simple Loading Spinner */}
-            {!isInitialLoaded && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/95 select-none pointer-events-none">
-                <Loader2 className="w-7 h-7 text-gray-400 animate-spin" />
-              </div>
-            )}
-            
-            {/* Confirmation Overlay when clicking post */}
-            {showRedirectConfirm && (
-              <div className="absolute inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-[fadeIn_0.15s_ease-out]">
-                <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-2xl max-w-xs w-full text-center flex flex-col items-center">
-                  <div className="w-12 h-12 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center mb-3">
-                    <Instagram className="w-6 h-6" />
-                  </div>
-                  <p className="text-sm sm:text-base font-black text-gray-900 mb-1">
-                    İnstagram-a yönləndirilsin?
-                  </p>
-                  <p className="text-xs text-gray-500 mb-5">
-                    Post İnstagram səhifəsində açılacaq
-                  </p>
-                  <div className="flex items-center justify-center gap-6 w-full">
-                    {/* Red Icon: NO */}
-                    <button
-                      type="button"
-                      onClick={() => setShowRedirectConfirm(false)}
-                      className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 active:scale-95 text-white flex items-center justify-center shadow-md hover:shadow-lg transition-all cursor-pointer"
-                      title="Xeyr"
-                    >
-                      <X className="w-6 h-6 stroke-[2.5]" />
-                    </button>
-
-                    {/* Green Icon: YES */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowRedirectConfirm(false);
-                        if (currentPostUrl) {
-                          window.open(currentPostUrl, '_blank', 'noopener,noreferrer');
-                        }
-                      }}
-                      className="w-12 h-12 rounded-full bg-green-500 hover:bg-green-600 active:scale-95 text-white flex items-center justify-center shadow-md hover:shadow-lg transition-all cursor-pointer"
-                      title="Bəli"
-                    >
-                      <Check className="w-6 h-6 stroke-[2.5]" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Edge Masks */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-white z-40 pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white z-40 pointer-events-none"></div>
-          </div>
-
-          {/* Navigation for multiple posts */}
-          {posts.length > 1 && (
-            <div className="px-4 py-2.5 bg-gray-50/90 flex items-center justify-between border-t border-gray-100 select-none">
-               <button 
-                 onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-                 className="p-1.5 hover:bg-gray-200 active:scale-95 rounded-lg text-gray-500 transition-transform"
-                 title="Sola"
-               >
-                 <ChevronLeft className="w-4 h-4" />
-               </button>
-               <div className="flex items-center gap-1">
-                 {posts.map((_, idx) => (
-                   <button
-                     key={idx}
-                     onClick={(e) => { e.stopPropagation(); setCurrentIndex(idx); }}
-                     className={`h-1.5 rounded-full transition-all ${
-                       idx === currentIndex ? 'w-4 bg-pink-600' : 'w-1.5 bg-gray-300 hover:bg-gray-400'
-                     }`}
-                     title={`${idx + 1}-ci post`}
-                   />
-                 ))}
-               </div>
-               <button 
-                 onClick={(e) => { e.stopPropagation(); handleNext(); }}
-                 className="p-1.5 hover:bg-gray-200 active:scale-95 rounded-lg text-gray-500 transition-transform"
-                 title="Sağa"
-               >
-                 <ChevronRight className="w-4 h-4" />
-               </button>
-            </div>
-          )}
-        </div>
-
-        {/* Floating Right Button for desktop */}
-        {posts.length > 1 && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); handleNext(); }}
-            className="hidden sm:flex absolute -right-14 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/95 hover:bg-white text-gray-800 shadow-xl items-center justify-center transition-all hover:scale-110 active:scale-95 z-40 border border-gray-100"
-            title="Növbəti"
-          >
-            <ChevronRight className="w-5 h-5 text-gray-700" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
 
 interface ViewState {
   activeMarketId: string | null;
@@ -706,35 +280,35 @@ const normalizeMarketProduct = (p: DiscountProduct): DiscountProduct => {
 };
 
 const migrateMarketData = (incomingMarkets: MarketData[]): MarketData[] => {
-  const migrated = (incomingMarkets || []).map(m => {
+  const seenById = new Map<string, MarketData>();
+
+  for (const m of (incomingMarkets || [])) {
+    if (!m || typeof m !== 'object') continue;
+    const rawId = (m.id || m.name || '').trim();
+    if (!rawId) continue;
+    const canonId = rawId.toLowerCase();
+
     let overrideColor = m.themeColor;
-    if (m.id === 'araz') overrideColor = 'amber';
-    if (m.id === 'oba') overrideColor = 'green';
-    
+    if (canonId === 'araz') overrideColor = 'amber';
+    if (canonId === 'oba') overrideColor = 'green';
+
     let overrideLogoUrl = m.logoUrl;
-    if (m.id === 'araz' || m.name.toLowerCase().includes('araz')) {
+    if (canonId === 'araz' || (m.name || '').toLowerCase().includes('araz')) {
       overrideLogoUrl = 'https://b7x9kq.arazmarket.az/storage/news/dsc_9152.jpg';
     }
-    if (m.name.toLowerCase().includes('rahat')) {
+    if ((m.name || '').toLowerCase().includes('rahat')) {
       overrideLogoUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRTsEY6AAE18u9Y57PHT9fxiujtBzAMxNFVtZl7TgONVA&s=10';
     }
-    if (m.id === 'omid' || m.name.toLowerCase().includes('omid')) {
+    if (canonId === 'omid' || (m.name || '').toLowerCase().includes('omid')) {
       overrideLogoUrl = overrideLogoUrl || 'https://omid.az/cdn/shop/files/logo-square-bg_b02cc3d7-332a-4af5-af81-cbe0f6b16235.png?v=1742375886';
     }
-    
-    const normProducts = (m.products || []).map(normalizeMarketProduct);
-    let updatedMarket: MarketData = { 
-      ...m, 
-      themeColor: overrideColor, 
-      logoUrl: overrideLogoUrl,
-      products: normProducts
-    };
 
-    if (!updatedMarket.catalogs) updatedMarket.catalogs = [];
+    const normProducts = Array.isArray(m.products) ? m.products.map(normalizeMarketProduct) : [];
+    const rawCatalogs = Array.isArray(m.catalogs) ? m.catalogs : [];
 
     // Normalize products inside existing catalogs
-    updatedMarket.catalogs = updatedMarket.catalogs.map(c => {
-      const cProds = (c.products || []).map(normalizeMarketProduct);
+    let normalizedCatalogs = rawCatalogs.map(c => {
+      const cProds = Array.isArray(c.products) ? c.products.map(normalizeMarketProduct) : [];
       let cEndDate = c.endDate;
       if (!cEndDate) {
         const dates = cProds.map(p => p.expiryDate || (p as any).bitis).filter(Boolean) as string[];
@@ -747,25 +321,49 @@ const migrateMarketData = (incomingMarkets: MarketData[]): MarketData[] => {
       };
     });
 
-    if (updatedMarket.catalogs.length === 0 && normProducts.length > 0) {
+    if (normalizedCatalogs.length === 0 && normProducts.length > 0) {
       const dates = normProducts.map(p => p.expiryDate || (p as any).bitis).filter(Boolean) as string[];
       const catalogEndDate = dates.length > 0 ? dates.sort()[dates.length - 1] : undefined;
-      return {
-        ...updatedMarket,
-        catalogs: [{
-          id: 'main',
-          name: 'Əsas Kataloq',
-          products: normProducts,
-          lastUpdated: updatedMarket.lastUpdated || new Date().toISOString(),
-          url: updatedMarket.url,
-          endDate: catalogEndDate
-        }]
-      };
+      normalizedCatalogs = [{
+        id: 'main',
+        name: 'Əsas Kataloq',
+        products: normProducts,
+        lastUpdated: m.lastUpdated || new Date().toISOString(),
+        url: m.url,
+        endDate: catalogEndDate
+      }];
     }
-    return updatedMarket;
-  });
 
-  return sortMarketsByOrder(migrated);
+    // Keep root m.products strictly mirrored to primary catalog so manual Supabase deletes
+    // in either catalogs[0].products or an empty catalog cannot be resurrected by stale root products
+    const canonicalProducts = normalizedCatalogs.length > 0
+      ? normalizedCatalogs[0].products
+      : normProducts;
+
+    const updatedMarket: MarketData = {
+      ...m,
+      themeColor: overrideColor,
+      logoUrl: overrideLogoUrl,
+      catalogs: normalizedCatalogs,
+      products: canonicalProducts
+    };
+
+    const existing = seenById.get(canonId);
+    if (!existing) {
+      seenById.set(canonId, updatedMarket);
+    } else {
+      // Deduplicate any duplicate market entry keeping the fuller/newer record
+      const existingCount = (existing.catalogs || []).reduce((acc, c) => acc + (c.products?.length || 0), 0) || (existing.products?.length || 0);
+      const nextCount = (updatedMarket.catalogs || []).reduce((acc, c) => acc + (c.products?.length || 0), 0) || (updatedMarket.products?.length || 0);
+      const existingTs = Date.parse(existing.lastUpdated || '') || 0;
+      const nextTs = Date.parse(updatedMarket.lastUpdated || '') || 0;
+      if (nextTs > existingTs || (nextTs === existingTs && nextCount > existingCount)) {
+        seenById.set(canonId, updatedMarket);
+      }
+    }
+  }
+
+  return sortMarketsByOrder(Array.from(seenById.values()));
 };
 
 const CATEGORY_TAG_COLORS = [
@@ -869,6 +467,21 @@ const App: React.FC = () => {
     return 0;
   };
 
+  const getProductDiscountSortScore = (p: DiscountProduct): { pct: number; diff: number } => {
+    const oldP = parsePriceNumber(p.oldPrice);
+    const newP = parsePriceNumber(p.newPrice);
+    const diff = !isNaN(oldP) && !isNaN(newP) && oldP > newP ? oldP - newP : 0;
+    let pct = 0;
+    if (!isNaN(oldP) && !isNaN(newP) && oldP > newP && oldP > 0) {
+      pct = ((oldP - newP) / oldP) * 100;
+    }
+    if (pct <= 0 && p.discountPercentage) {
+      const parsed = parseFloat(String(p.discountPercentage).replace(/[^0-9.,]/g, '').replace(',', '.'));
+      if (!isNaN(parsed) && parsed > 0) pct = parsed;
+    }
+    return { pct, diff };
+  };
+
   const handleSelectMarket = (marketId: string | null, options?: { preserveSearchReturn?: boolean }) => {
     if (marketId !== null) {
       captureHomeScrollBeforeLeave();
@@ -885,8 +498,9 @@ const App: React.FC = () => {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
   };
-  const [banner1, setBanner1] = useState<BannerData>(INITIAL_BANNER_1);
-  const [banner2, setBanner2] = useState<BannerData>(INITIAL_BANNER_2);
+  const marketsRef = useRef<MarketData[]>(markets);
+  marketsRef.current = markets;
+  const [adminSortByDiscount, setAdminSortByDiscount] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -904,13 +518,31 @@ const App: React.FC = () => {
   const [showFavorites, setShowFavorites] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [openSearchTrigger, setOpenSearchTrigger] = useState(0);
-  const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
-  const [activeBannerId, setActiveBannerId] = useState<'banner-1' | 'banner-2'>('banner-1');
   const [isAddMarketModalOpen, setIsAddMarketModalOpen] = useState(false);
-  const [isSocialDealsModalOpen, setIsSocialDealsModalOpen] = useState(false);
   const [marketToEdit, setMarketToEdit] = useState<MarketData | null>(null);
   const [productToEdit, setProductToEdit] = useState<{product: DiscountProduct, index: number, catalogId?: string} | null>(null);
   const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState(false);
+  const [featuredAd, setFeaturedAd] = useState<BannerData>(() => {
+    try {
+      const saved = localStorage.getItem('featuredAd_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            id: parsed.id || 'featured-ad',
+            title: parsed.title || '',
+            imageUrl: parsed.imageUrl || '',
+            link: parsed.link || '',
+            isVisible: Boolean(parsed.isVisible),
+            fitMode: parsed.fitMode === 'contain' ? 'contain' : 'cover',
+          };
+        }
+      }
+    } catch (e) {}
+    return { id: 'featured-ad', title: '', imageUrl: '', link: '', isVisible: false, fitMode: 'cover' };
+  });
+  const [isFeaturedAdModalOpen, setIsFeaturedAdModalOpen] = useState(false);
+  const [featuredAdImgError, setFeaturedAdImgError] = useState(false);
   const [productViewMode, setProductViewMode] = useState<'grid' | 'two'>('grid');
   const [viewProduct, setViewProduct] = useState<{
     product: DiscountProduct;
@@ -921,6 +553,7 @@ const App: React.FC = () => {
     currentIndex?: number;
   } | null>(null);
   const [opportunityModalIndex, setOpportunityModalIndex] = useState<number | null>(null);
+  const [opportunityInstagramIndex, setOpportunityInstagramIndex] = useState<number | null>(null);
   const [opportunityCols, setOpportunityCols] = useState<number>(() => {
     if (typeof window === 'undefined') return 2;
     const w = window.innerWidth;
@@ -1020,7 +653,6 @@ const App: React.FC = () => {
     scrollY: number;
   } | null>(null);
   const skipSearchResetRef = useRef<boolean>(false);
-  const [instagramViewerData, setInstagramViewerData] = useState<{posts: string[], name: string, initialIndex: number} | null>(null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const [activeCategoryDropdown, setActiveCategoryDropdown] = useState<string | null>(null);
   const [isMarketSwitcherOpen, setIsMarketSwitcherOpen] = useState(false);
@@ -1218,8 +850,9 @@ const App: React.FC = () => {
     const safetyTimer = setTimeout(() => setIsLoading(false), 2000);
     if (isCloudConnected) {
       const unsubMarkets = supabaseService.subscribeToMarkets((data) => {
-        if (data && data.length > 0) {
+        if (Array.isArray(data) && data.length > 0) {
           const migrated = migrateMarketData(data);
+          marketsRef.current = migrated;
           setMarkets(migrated);
           try { localStorage.setItem('marketData_v2', JSON.stringify(migrated)); } catch (e) {}
           setIsLoading(false);
@@ -1227,9 +860,20 @@ const App: React.FC = () => {
           setIsLoading(false);
         }
       });
-      const unsubBanners = supabaseService.subscribeToBanners((b1, b2) => {
-        if (b1) setBanner1(b1);
-        if (b2) setBanner2(b2);
+      const unsubBanners = supabaseService.subscribeToBanners((b1) => {
+        if (b1 && typeof b1 === 'object') {
+          const nextAd: BannerData = {
+            id: b1.id || 'featured-ad',
+            title: b1.title || '',
+            imageUrl: b1.imageUrl || '',
+            link: b1.link || '',
+            isVisible: Boolean(b1.isVisible),
+            fitMode: b1.fitMode === 'contain' ? 'contain' : 'cover',
+          };
+          setFeaturedAd(nextAd);
+          setFeaturedAdImgError(false);
+          try { localStorage.setItem('featuredAd_v1', JSON.stringify(nextAd)); } catch (e) {}
+        }
       });
       return () => { unsubMarkets(); unsubBanners(); clearTimeout(safetyTimer); };
     } else {
@@ -1237,12 +881,10 @@ const App: React.FC = () => {
         const savedMarkets = localStorage.getItem('marketData_v2');
         if (savedMarkets) {
           const parsed = JSON.parse(savedMarkets);
-          setMarkets(migrateMarketData(parsed));
+          const migrated = migrateMarketData(parsed);
+          marketsRef.current = migrated;
+          setMarkets(migrated);
         }
-        const savedB1 = localStorage.getItem('bannerData1');
-        if (savedB1) setBanner1(JSON.parse(savedB1));
-        const savedB2 = localStorage.getItem('bannerData2');
-        if (savedB2) setBanner2(JSON.parse(savedB2));
       } catch (e) {
         console.error(e);
       } finally { 
@@ -1252,29 +894,38 @@ const App: React.FC = () => {
     }
   }, [isCloudConnected]);
 
-  const persistData = (newMarkets: MarketData[], newB1: BannerData, newB2: BannerData) => {
+  const handleSaveFeaturedAd = (nextBanner: BannerData) => {
+    const normalized: BannerData = {
+      id: nextBanner.id || 'featured-ad',
+      title: (nextBanner.title || '').trim(),
+      imageUrl: (nextBanner.imageUrl || '').trim(),
+      link: normalizeAdLinkUrl(nextBanner.link),
+      isVisible: Boolean(nextBanner.isVisible && ((nextBanner.imageUrl || '').trim() || (nextBanner.title || '').trim())),
+      fitMode: nextBanner.fitMode === 'contain' ? 'contain' : 'cover',
+    };
+    setFeaturedAd(normalized);
+    setFeaturedAdImgError(false);
+    try { localStorage.setItem('featuredAd_v1', JSON.stringify(normalized)); } catch (e) {}
     if (isCloudConnected) {
-      supabaseService.saveMarkets(newMarkets);
-      supabaseService.saveBanners(newB1, newB2);
-    } else {
-      localStorage.setItem('marketData_v2', JSON.stringify(newMarkets));
-      localStorage.setItem('bannerData1', JSON.stringify(newB1));
-      localStorage.setItem('bannerData2', JSON.stringify(newB2));
+      supabaseService.saveBanners(normalized, normalized);
+    }
+  };
+
+  const persistMarketsOnly = (nextMarkets: MarketData[]) => {
+    try {
+      localStorage.setItem('marketData_v2', JSON.stringify(nextMarkets));
+    } catch (e) {}
+    if (isCloudConnected) {
+      supabaseService.saveMarkets(nextMarkets);
     }
   };
 
   const updateMarketsState = (fn: (prev: MarketData[]) => MarketData[]) => {
-    setMarkets(prev => {
-      const newState = fn(prev);
-      persistData(newState, banner1, banner2);
-      return newState;
-    });
-  };
-
-  const updateBannerState = (b1: BannerData, b2: BannerData) => {
-    setBanner1(b1);
-    setBanner2(b2);
-    persistData(markets, b1, b2);
+    const rawNext = fn(marketsRef.current);
+    const normalizedNext = migrateMarketData(rawNext);
+    marketsRef.current = normalizedNext;
+    setMarkets(normalizedNext);
+    persistMarketsOnly(normalizedNext);
   };
 
   const sortedMarkets = useMemo(() => {
@@ -1286,6 +937,19 @@ const App: React.FC = () => {
       return expiredA - expiredB;
     });
   }, [markets]);
+
+  const totalHomeProductsCount = useMemo(() => {
+    return sortedMarkets.reduce((sum, m) => {
+      if (isMarketFullyExpired(m)) return sum;
+      const previewCat = m.catalogs && m.catalogs.length > 0 ? m.catalogs[0] : null;
+      const prods = previewCat ? (previewCat.products || []) : (m.products || []);
+      const activeCount = prods.reduce((acc, p) => {
+        const cd = calculateDaysLeft(extractProductEndDate(p, previewCat?.endDate));
+        return cd && cd.daysLeft < 0 ? acc : acc + 1;
+      }, 0);
+      return sum + activeCount;
+    }, 0);
+  }, [sortedMarkets]);
 
   // One consistent sample product from each active (non-expired) market, horizontally scrollable
   const sampleFeaturedProducts = useMemo(() => {
@@ -1437,8 +1101,10 @@ const App: React.FC = () => {
     return false;
   };
 
+  const isOpportunityExportOpen = opportunityInstagramIndex !== null;
+
   const groupedOpportunities = useMemo(() => {
-      if (!deferredCheaperOnly) return [];
+      if (!deferredCheaperOnly && !isOpportunityExportOpen) return [];
       const groups = new Map<string, {
           productName: string,
           category: any,
@@ -1523,7 +1189,7 @@ const App: React.FC = () => {
       });
 
       return results.map(item => item.group);
-  }, [markets, deferredCheaperOnly, debouncedSearchQuery, debouncedMaxPrice]);
+  }, [markets, deferredCheaperOnly, isOpportunityExportOpen, debouncedSearchQuery, debouncedMaxPrice]);
   
   const isFavorite = (productName: string, marketId: string) => {
     return favorites.some(f => f.productName === productName && f.marketId === marketId);
@@ -1624,7 +1290,12 @@ const App: React.FC = () => {
               endDate
             });
           }
-          return { ...m, catalogs: newCatalogs, lastUpdated: new Date().toISOString() };
+          return {
+            ...m,
+            catalogs: newCatalogs,
+            products: newCatalogs[0]?.products || updatedProductsList,
+            lastUpdated: new Date().toISOString()
+          };
         }
         return m;
       }));
@@ -1678,7 +1349,7 @@ const App: React.FC = () => {
   const handleUpdateMarket = (updatedMarket: MarketData) => {
     updateMarketsState(prev => prev.map(m => {
       if (m.id === updatedMarket.id) {
-        return { ...m, ...updatedMarket };
+        return { ...m, ...updatedMarket, lastUpdated: new Date().toISOString() };
       }
       return m;
     }));
@@ -1689,7 +1360,15 @@ const App: React.FC = () => {
      if (!activeMarketId) return;
      if (window.confirm("Bu kataloqu silmək istədiyinizə əminsiniz?")) {
         updateMarketsState(prev => prev.map(m => {
-            if (m.id === activeMarketId) return { ...m, catalogs: m.catalogs?.filter(c => c.id !== catalogId) || [] };
+            if (m.id === activeMarketId) {
+              const remainingCatalogs = m.catalogs?.filter(c => c.id !== catalogId) || [];
+              return {
+                ...m,
+                catalogs: remainingCatalogs,
+                products: remainingCatalogs[0]?.products || [],
+                lastUpdated: new Date().toISOString()
+              };
+            }
             return m;
         }));
         setActiveCatalogId(null); 
@@ -1697,48 +1376,70 @@ const App: React.FC = () => {
   };
 
   const handleUpdateProduct = (updatedProduct: DiscountProduct) => {
-    if (!productToEdit || !activeMarketId || !productToEdit.catalogId) return;
+    if (!productToEdit || !activeMarketId) return;
     updateMarketsState(prev => prev.map(m => {
-      if (m.id === activeMarketId) {
-        const newCatalogs = m.catalogs ? [...m.catalogs] : [];
-        const catIndex = newCatalogs.findIndex(c => c.id === productToEdit.catalogId);
-        if (catIndex >= 0) {
-            const products = [...newCatalogs[catIndex].products];
-            if (productToEdit.index === -1) { // -1 means adding new
-                products.unshift(updatedProduct);
-            } else if (products[productToEdit.index]) {
-                products[productToEdit.index] = updatedProduct;
-            }
-            newCatalogs[catIndex] = { ...newCatalogs[catIndex], products };
+      if (m.id !== activeMarketId) return m;
+      const newCatalogs = m.catalogs ? [...m.catalogs] : [];
+      if (newCatalogs.length === 0) {
+        const products = [...(m.products || [])];
+        if (productToEdit.index === -1) {
+          products.unshift(updatedProduct);
+        } else if (products[productToEdit.index]) {
+          products[productToEdit.index] = updatedProduct;
         }
-        return { ...m, catalogs: newCatalogs };
+        return { ...m, products, lastUpdated: new Date().toISOString() };
       }
-      return m;
+      const catIndex = productToEdit.catalogId
+        ? newCatalogs.findIndex(c => c.id === productToEdit.catalogId)
+        : 0;
+      const targetIdx = catIndex >= 0 ? catIndex : 0;
+      const products = [...(newCatalogs[targetIdx].products || [])];
+      if (productToEdit.index === -1) {
+        products.unshift(updatedProduct);
+      } else if (products[productToEdit.index]) {
+        products[productToEdit.index] = updatedProduct;
+      }
+      newCatalogs[targetIdx] = {
+        ...newCatalogs[targetIdx],
+        products,
+        lastUpdated: new Date().toISOString()
+      };
+      return {
+        ...m,
+        catalogs: newCatalogs,
+        products: newCatalogs[0]?.products || [],
+        lastUpdated: new Date().toISOString()
+      };
     }));
     setProductToEdit(null);
   };
   
   const handleAddProductManually = () => {
-      if (!resolvedActiveCatalogId) return;
+      const targetCatalogId = resolvedActiveCatalogId || currentMarket?.catalogs?.[0]?.id;
       setProductToEdit({
           product: { productName: '', oldPrice: '', newPrice: '', discountPercentage: '', category: 'Digər' },
           index: -1,
-          catalogId: resolvedActiveCatalogId
+          catalogId: targetCatalogId || undefined
       });
   };
 
   const handleEditFromSearch = (product: DiscountProduct, marketId: string) => {
       const market = markets.find(m => m.id === marketId);
       if(!market) return;
-      if(market.catalogs) {
+      if(market.catalogs && market.catalogs.length > 0) {
           for(const cat of market.catalogs) {
-              const idx = cat.products.findIndex(p => p.productName === product.productName && p.newPrice === product.newPrice);
+              const idx = (cat.products || []).findIndex(p => p.productName === product.productName && p.newPrice === product.newPrice);
               if(idx !== -1) {
                   setActiveMarketId(marketId);
                   setProductToEdit({ product, index: idx, catalogId: cat.id });
                   return;
               }
           }
+      }
+      const rootIdx = (market.products || []).findIndex(p => p.productName === product.productName && p.newPrice === product.newPrice);
+      if (rootIdx !== -1) {
+          setActiveMarketId(marketId);
+          setProductToEdit({ product, index: rootIdx, catalogId: market.catalogs?.[0]?.id });
       }
   };
 
@@ -1832,6 +1533,66 @@ const App: React.FC = () => {
   const homeScrollYRef = useRef<number>(0);
   const wasHomeViewRef = useRef<boolean>(false);
   const suspendHomeCaptureRef = useRef<boolean>(false);
+
+  const [displayedHomeProductsCount, setDisplayedHomeProductsCount] = useState<number>(totalHomeProductsCount);
+  const displayedHomeCountRef = useRef<number>(totalHomeProductsCount);
+  const hasHomeCountBaselineRef = useRef<boolean>(totalHomeProductsCount > 0);
+
+  useEffect(() => {
+    if (isLoading || !isHomeView) return;
+
+    const target = totalHomeProductsCount;
+    const start = displayedHomeCountRef.current;
+
+    // First real load from empty placeholder (no cached localStorage): snap immediately without 0 -> N animation
+    if (!hasHomeCountBaselineRef.current) {
+      hasHomeCountBaselineRef.current = true;
+      if (start !== target) {
+        displayedHomeCountRef.current = target;
+        setDisplayedHomeProductsCount(target);
+      }
+      return;
+    }
+
+    // If count didn't change at all, do not run any animation
+    if (start === target) return;
+
+    const diff = Math.abs(target - start);
+    const duration = diff === 1 ? 150 : Math.min(1150, Math.max(320, diff * 55));
+
+    let rafId = 0;
+    const startTimer = window.setTimeout(() => {
+      const startTime = performance.now();
+
+      const step = (now: number) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / duration);
+        const eased = diff <= 25
+          ? 1 - Math.pow(1 - progress, 1.5)
+          : 1 - Math.pow(1 - progress, 2.6);
+
+        const nextVal = progress >= 1
+          ? target
+          : Math.round(start + (target - start) * eased);
+
+        if (nextVal !== displayedHomeCountRef.current) {
+          displayedHomeCountRef.current = nextVal;
+          setDisplayedHomeProductsCount(nextVal);
+        }
+
+        if (progress < 1) {
+          rafId = requestAnimationFrame(step);
+        }
+      };
+
+      rafId = requestAnimationFrame(step);
+    }, 120);
+
+    return () => {
+      window.clearTimeout(startTimer);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [totalHomeProductsCount, isLoading, isHomeView]);
 
   const captureHomeScrollBeforeLeave = () => {
     if (!isLoading && activeMarketId === null && !showFavorites && !isSearchViewActive) {
@@ -2172,15 +1933,14 @@ const App: React.FC = () => {
   const hasOpenModal = Boolean(
     viewProduct ||
     opportunityModalIndex !== null ||
-    instagramViewerData ||
+    opportunityInstagramIndex !== null ||
     isScannerOpen ||
     isLoginModalOpen ||
-    isBannerModalOpen ||
     isAddMarketModalOpen ||
-    isSocialDealsModalOpen ||
     marketToEdit ||
     productToEdit ||
-    isDatabaseModalOpen
+    isDatabaseModalOpen ||
+    isFeaturedAdModalOpen
   );
 
   // Check if search or any subpage view is active
@@ -2203,15 +1963,14 @@ const App: React.FC = () => {
   const closeAllModals = useCallback(() => {
     setViewProduct(null);
     setOpportunityModalIndex(null);
-    setInstagramViewerData(null);
+    setOpportunityInstagramIndex(null);
     setIsScannerOpen(false);
     setIsLoginModalOpen(false);
-    setIsBannerModalOpen(false);
     setIsAddMarketModalOpen(false);
-    setIsSocialDealsModalOpen(false);
     setMarketToEdit(null);
     setProductToEdit(null);
     setIsDatabaseModalOpen(false);
+    setIsFeaturedAdModalOpen(false);
   }, []);
 
   const hasOpenModalRef = useRef(hasOpenModal);
@@ -2716,6 +2475,23 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                     {isAdmin && (
                       <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdminSortByDiscount(prev => !prev);
+                            setVisibleDetailCount(24);
+                          }}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[11px] sm:text-xs border transition-all cursor-pointer active:scale-95 ${
+                            adminSortByDiscount
+                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                          }`}
+                          title="Məhsulları ən yüksək endirim faizinə görə sırala"
+                        >
+                          <Percent className="w-3.5 h-3.5" />
+                          <span className="sm:hidden">Endirim</span>
+                          <span className="hidden sm:inline">Ən yüksək endirim</span>
+                        </button>
                         <button 
                           onClick={() => { setActiveMarketId(activeMarketObj.id); handleAddProductManually(); }} 
                           className="flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-[11px] sm:text-xs bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
@@ -2791,12 +2567,21 @@ const App: React.FC = () => {
 
         {isAdmin && (
           <div className="max-w-7xl mx-auto px-4 mt-2 flex justify-end gap-2 flex-wrap">
-            <button 
-              onClick={() => setIsSocialDealsModalOpen(true)}
-              className="flex items-center gap-2 text-xs font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-lg hover:bg-pink-100 transition-colors border border-pink-100 shadow-sm"
+            <button
+              onClick={() => setIsFeaturedAdModalOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition-colors border border-amber-200 shadow-sm cursor-pointer"
+              title="Örnəklər sırasındakı reklam görsəlini və linkini düzəlt"
             >
-              <Instagram className="w-3 h-3" />
-              İnstagram Son Paylaşımlar
+              <Megaphone className="w-3.5 h-3.5" />
+              Reklam (Örnək)
+            </button>
+            <button 
+              onClick={() => setOpportunityInstagramIndex(0)}
+              className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200 shadow-sm cursor-pointer"
+              title="Fürsətlər üçün Instagram şəklini hazırla və indir"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Fürsət Şəkli (IG)
             </button>
             <button 
               onClick={() => setIsAddMarketModalOpen(true)}
@@ -2829,20 +2614,32 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto w-full px-2 sm:px-4 md:px-6 pt-1.5 pb-6 md:pt-3 md:pb-8">
           <main className="w-full">
             <h1 className="sr-only">endirim.net – Market Endirimləri və Qiymət Müqayisəsi</h1>
-            {!showFavorites && (banner1.isVisible || isAdmin) && (
-              <div className="xl:hidden mb-4">
-                <Banner banner={banner1} isAdmin={isAdmin} onEdit={() => { setActiveBannerId('banner-1'); setIsBannerModalOpen(true); }} variant="horizontal" />
-              </div>
-            )}
 
             {showFavorites ? (
                <div className="animate-[fadeIn_0.5s_ease-out]">
-                  <div className="mb-6 flex items-center justify-between gap-2">
-                    <h2 className="text-xl sm:text-2xl font-bold text-gray-800 flex items-center gap-2">
-                       <Heart className="w-6 h-6 text-red-500 fill-current" />
-                       Yadda Saxlanılanlar
-                    </h2>
-                    <div className="flex items-center gap-2 shrink-0">
+                  <div
+                    style={{ top: `${stickyHeaderHeight}px` }}
+                    className="sticky z-30 bg-white/95 backdrop-blur-md border border-gray-200/90 rounded-xl px-2.5 sm:px-3.5 py-2 mb-4 sm:mb-6 shadow-xs flex items-center justify-between gap-2 transition-[top] duration-150"
+                  >
+                    <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowFavorites(false)}
+                        className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-gray-700 hover:text-green-700 active:scale-95 transition-all cursor-pointer shrink-0"
+                        title="Ana səhifəyə qayıt"
+                      >
+                        <div className="w-6 h-6 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 shadow-2xs shrink-0">
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                        </div>
+                        <span>Geri</span>
+                      </button>
+                      <span className="h-4 w-px bg-gray-200 shrink-0" aria-hidden="true" />
+                      <h2 className="text-sm sm:text-base font-bold text-gray-900 flex items-center gap-1.5 truncate">
+                         <Heart className="w-4 h-4 text-red-500 fill-current shrink-0" />
+                         <span className="truncate">Yadda Saxlanılanlar</span>
+                      </h2>
+                    </div>
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                       <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200/80" role="group" aria-label="Görünüş rejimi">
                         <button
                           type="button"
@@ -2861,7 +2658,7 @@ const App: React.FC = () => {
                           <Grid2x2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                         </button>
                       </div>
-                      <span className="text-xs sm:text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">{favorites.length} məhsul</span>
+                      <span className="text-[11px] sm:text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full whitespace-nowrap">{favorites.length} məhsul</span>
                     </div>
                   </div>
                   {favorites.length > 0 ? (
@@ -2906,6 +2703,16 @@ const App: React.FC = () => {
                                     }}
                                     isFavorite={true}
                                     onToggleFavorite={() => toggleFavorite(product, product.marketId)}
+                                    onExportInstagram={isAdmin ? () => exportGeneralProductPosterPng(
+                                      product,
+                                      {
+                                        id: market?.id || product.marketId,
+                                        name: marketName,
+                                        logoUrl: market?.logoUrl,
+                                        logoPlaceholder: market?.logoPlaceholder || marketName[0] || 'M'
+                                      },
+                                      market?.catalogs?.[0]?.endDate
+                                    ) : undefined}
                                   />
                                </div>
                             </div>
@@ -3090,13 +2897,25 @@ const App: React.FC = () => {
                           })()}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                         {showCheaperOnly && (
+                          <div className="flex flex-wrap items-center gap-2">
                             <div className="flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-xl border border-green-200">
-                            <TrendingDown className="w-4 h-4" />
-                            <span className="font-bold">Fürsətlər</span>
-                            {isAdmin && <button onClick={handleRefreshComparison} className="hover:rotate-180 transition-transform"><RotateCcw className="w-3 h-3" /></button>}
+                              <TrendingDown className="w-4 h-4" />
+                              <span className="font-bold">Fürsətlər</span>
+                              {isAdmin && <button onClick={handleRefreshComparison} className="hover:rotate-180 transition-transform"><RotateCcw className="w-3 h-3" /></button>}
                             </div>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => setOpportunityInstagramIndex(0)}
+                                className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer"
+                              >
+                                <Download className="w-4 h-4" />
+                                <span>Instagram Şəkli İndir</span>
+                              </button>
+                            )}
+                          </div>
                         )}
                         </div>
                         {showCheaperOnly ? (() => {
@@ -3128,6 +2947,8 @@ const App: React.FC = () => {
                                         imageUrl={group.imageUrl}
                                         variants={group.variants}
                                         onClick={() => setOpportunityModalIndex(idx)}
+                                        isAdmin={isAdmin}
+                                        onExportInstagram={() => exportOpportunityPosterPng(group)}
                                       />
                                     ))}
                                   </div>
@@ -3274,6 +3095,58 @@ const App: React.FC = () => {
                                   >
                                     {row.items.map((item, idx) => {
                                       if (item.type === 'ad') {
+                                        const adImg = (featuredAd.imageUrl || '').trim();
+                                        const adTitle = (featuredAd.title || '').trim();
+                                        const adLink = normalizeAdLinkUrl(featuredAd.link);
+                                        const adFitMode = featuredAd.fitMode === 'contain' ? 'contain' : 'cover';
+                                        const hasActiveAd = Boolean(featuredAd.isVisible && (adImg || adTitle));
+                                        const showAdImage = Boolean(hasActiveAd && adImg && !featuredAdImgError);
+
+                                        const cardInner = (
+                                          <div className={`bg-white rounded-xl sm:rounded-2xl overflow-hidden flex items-center justify-center flex-1 min-h-0 w-full h-full relative z-10 shadow-2xs border border-amber-200/90 ${showAdImage ? 'p-0' : 'p-1.5'}`}>
+                                            {showAdImage ? (
+                                              adFitMode === 'cover' ? (
+                                                <img
+                                                  src={adImg}
+                                                  alt={adTitle || 'Reklam'}
+                                                  referrerPolicy="no-referrer"
+                                                  onError={() => setFeaturedAdImgError(true)}
+                                                  className="w-full h-full object-cover object-center scale-[1.02] pointer-events-none select-none"
+                                                />
+                                              ) : (
+                                                <div className="relative w-full h-full overflow-hidden flex items-center justify-center bg-gray-100">
+                                                  <img
+                                                    src={adImg}
+                                                    alt=""
+                                                    aria-hidden="true"
+                                                    referrerPolicy="no-referrer"
+                                                    className="absolute inset-0 w-full h-full object-cover blur-md scale-110 opacity-45 pointer-events-none select-none"
+                                                  />
+                                                  <img
+                                                    src={adImg}
+                                                    alt={adTitle || 'Reklam'}
+                                                    referrerPolicy="no-referrer"
+                                                    onError={() => setFeaturedAdImgError(true)}
+                                                    className="relative z-10 w-full h-full object-contain pointer-events-none select-none"
+                                                  />
+                                                </div>
+                                              )
+                                            ) : hasActiveAd && adTitle ? (
+                                              <div className="w-full h-full rounded-[9px] sm:rounded-xl border border-dashed border-amber-300/90 bg-amber-50/35 flex items-center justify-center px-2 text-center">
+                                                <p className="text-[11.5px] min-[380px]:text-xs sm:text-[13px] font-bold text-gray-800 leading-snug line-clamp-2">
+                                                  {adTitle}
+                                                </p>
+                                              </div>
+                                            ) : (
+                                              <div className="w-full h-full rounded-[9px] sm:rounded-xl border border-dashed border-amber-300/90 bg-white flex items-center justify-center px-2 text-center">
+                                                <p className="text-[11.5px] min-[380px]:text-xs sm:text-[13px] font-bold text-gray-600 leading-snug">
+                                                  Burda sizin reklamınız ola bilər
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+
                                         return (
                                           <div
                                             key={`sample-hero-${row.key}-ad-${idx}`}
@@ -3281,7 +3154,7 @@ const App: React.FC = () => {
                                           >
                                             <div
                                               style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
-                                              className="relative flex flex-col h-full select-none pt-3.5 sm:pt-4"
+                                              className="relative flex flex-col h-full select-none pt-3.5 sm:pt-4 group/adcard"
                                             >
                                               <div
                                                 className="absolute top-0 left-0 z-0 bg-amber-500 text-white px-2 pt-[3px] rounded-t-lg sm:rounded-t-xl flex items-start justify-center pointer-events-none select-none max-w-[88%] shadow-xs"
@@ -3292,13 +3165,46 @@ const App: React.FC = () => {
                                                   Reklam
                                                 </span>
                                               </div>
-                                              <div className="bg-white rounded-xl sm:rounded-2xl overflow-hidden flex items-center justify-center h-full relative z-10 shadow-2xs border border-amber-200/90 p-1.5">
-                                                <div className="w-full h-full rounded-[9px] sm:rounded-xl border border-dashed border-amber-300/90 bg-white flex items-center justify-center px-2 text-center">
-                                                  <p className="text-[11.5px] min-[380px]:text-xs sm:text-[13px] font-bold text-gray-600 leading-snug">
-                                                    Burda sizin reklamınız ola bilər
-                                                  </p>
-                                                </div>
-                                              </div>
+
+                                              {isAdmin && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setIsFeaturedAdModalOpen(true);
+                                                  }}
+                                                  className="absolute top-0 right-1 z-20 inline-flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[9.5px] font-bold px-1.5 py-0.5 rounded-md shadow-sm cursor-pointer transition-colors"
+                                                  title="Reklamı düzəlt"
+                                                >
+                                                  <Edit className="w-2.5 h-2.5" />
+                                                  Düzəlt
+                                                </button>
+                                              )}
+
+                                              {hasActiveAd && adLink ? (
+                                                <a
+                                                  href={adLink}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  draggable={false}
+                                                  className="flex flex-1 min-h-0 w-full cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all"
+                                                  title={adTitle || adLink}
+                                                >
+                                                  {cardInner}
+                                                </a>
+                                              ) : isAdmin ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setIsFeaturedAdModalOpen(true)}
+                                                  className="flex flex-1 min-h-0 w-full cursor-pointer text-left"
+                                                  title="Reklam əlavə et"
+                                                >
+                                                  {cardInner}
+                                                </button>
+                                              ) : (
+                                                cardInner
+                                              )}
                                             </div>
                                           </div>
                                         );
@@ -3357,6 +3263,7 @@ const App: React.FC = () => {
                                             }}
                                             isFavorite={isFavorite(product.productName || '', market.id)}
                                             onToggleFavorite={() => toggleFavorite(product, market.id)}
+                                            onExportInstagram={isAdmin ? () => exportGeneralProductPosterPng(product, market, market.catalogs?.[0]?.endDate) : undefined}
                                           />
                                         </div>
                                       );
@@ -3407,28 +3314,14 @@ const App: React.FC = () => {
                         </div>
 
                         {/* Total product count above the Markets List (active / non-expired products only) */}
-                        {(() => {
-                          const totalHomeProductsCount = sortedMarkets.reduce((sum, m) => {
-                            if (isMarketFullyExpired(m)) return sum;
-                            const previewCat = m.catalogs && m.catalogs.length > 0 ? m.catalogs[0] : null;
-                            const prods = previewCat ? (previewCat.products || []) : (m.products || []);
-                            const activeCount = prods.reduce((acc, p) => {
-                              const cd = calculateDaysLeft(extractProductEndDate(p, previewCat?.endDate));
-                              return cd && cd.daysLeft < 0 ? acc : acc + 1;
-                            }, 0);
-                            return sum + activeCount;
-                          }, 0);
-                          return (
-                            <div className="flex items-center justify-between px-1 pt-0.5">
-                              <span className="text-xs sm:text-sm font-extrabold text-gray-500 uppercase tracking-wider">
-                                Marketlər
-                              </span>
-                              <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-200/90 px-2.5 sm:px-3 py-1 rounded-full shadow-2xs">
-                                Cəmi {totalHomeProductsCount} məhsul
-                              </span>
-                            </div>
-                          );
-                        })()}
+                        <div className="flex items-center justify-between px-1 pt-0.5">
+                          <span className="text-xs sm:text-sm font-extrabold text-gray-500 uppercase tracking-wider">
+                            Marketlər
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-200/90 px-2.5 sm:px-3 py-1 rounded-full shadow-2xs tabular-nums">
+                            Cəmi {displayedHomeProductsCount} məhsul
+                          </span>
+                        </div>
 
                         {/* Markets List - Alt alta (vertically stacked) with icon, name, and green (active) or gray (expired) product count */}
                         <div className="flex flex-col gap-2 sm:gap-2.5">
@@ -3506,7 +3399,17 @@ const App: React.FC = () => {
                           const mktCatalog = mktCatalogs.find(c => c.id === selectedCatId) || (mktCatalogs.length > 0 ? mktCatalogs[0] : null);
                           const mktDateStatus = getCatalogDateStatus(mktCatalog || undefined);
                           const mktProducts = mktCatalog ? mktCatalog.products : (mkt.products || []);
-                          const mktFilteredProducts = mktProducts.filter(filterProductForDetail);
+                          const mktFilteredRaw = mktProducts.filter(filterProductForDetail);
+                          const isDiscountSorted = isAdmin && adminSortByDiscount;
+                          const mktFilteredProducts = isDiscountSorted
+                            ? [...mktFilteredRaw].sort((a, b) => {
+                                const sa = getProductDiscountSortScore(a);
+                                const sb = getProductDiscountSortScore(b);
+                                if (Math.abs(sb.pct - sa.pct) > 0.01) return sb.pct - sa.pct;
+                                if (Math.abs(sb.diff - sa.diff) > 0.01) return sb.diff - sa.diff;
+                                return 0;
+                              })
+                            : mktFilteredRaw;
                           const mktAccent = mkt.themeColor || 'green';
 
                           // All categories with their product counts in this catalog
@@ -3519,15 +3422,15 @@ const App: React.FC = () => {
                             return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
                           })();
                           const hasCategories = allCategoriesWithCounts.length > 0 && !(allCategoriesWithCounts.length === 1 && allCategoriesWithCounts[0].name.toLowerCase() === 'digər');
+                          const effectiveHasCategories = hasCategories && !isDiscountSorted;
 
                           const categoryColorIndexMap = new Map(
                             allCategoriesWithCounts.map((c, cIdx) => [c.name, cIdx % CATEGORY_TAG_COLORS.length])
                           );
 
-                          // Build complete ordered market product list (ALL products grouped by category in order)
-                          // so the modal counter always reflects TOTAL market products (e.g. 4 / 72) and categories stay contiguous
+                          // Build complete ordered market product list
                           const fullMarketOrderedProducts: DiscountProduct[] = (() => {
-                            if (hasCategories) {
+                            if (effectiveHasCategories) {
                               const catOrderMap = new Map<string, DiscountProduct[]>();
                               mktFilteredProducts.forEach(p => {
                                 const cat = (p.category || 'Digər').trim() || 'Digər';
@@ -3539,7 +3442,7 @@ const App: React.FC = () => {
                             return mktFilteredProducts;
                           })();
 
-                          const orderedForDisplay = hasCategories ? fullMarketOrderedProducts : mktFilteredProducts;
+                          const orderedForDisplay = effectiveHasCategories ? fullMarketOrderedProducts : mktFilteredProducts;
                           const displayedProducts = orderedForDisplay.slice(0, visibleDetailCount);
                           const hasMore = visibleDetailCount < orderedForDisplay.length;
 
@@ -3577,7 +3480,7 @@ const App: React.FC = () => {
 
                           // Grouping by category (all categories stay visible)
                           const groupedProductsByCategory: { category: string; products: { product: DiscountProduct; originalIndex: number }[] }[] = [];
-                          if (hasCategories) {
+                          if (effectiveHasCategories) {
                             const catMap = new Map<string, { category: string; products: { product: DiscountProduct; originalIndex: number }[] }>();
                             displayedProducts.forEach((product) => {
                               const cat = (product.category || 'Digər').trim() || 'Digər';
@@ -3631,7 +3534,7 @@ const App: React.FC = () => {
 
                               {/* Products Grid for this market */}
                               {displayedProducts.length > 0 ? (
-                                hasCategories ? (
+                                effectiveHasCategories ? (
                                     /* Grouped by Categories View (Wrapping hashtag chips at top + compact sticky category indicator bar on scroll) */
                                     <div className="space-y-5 sm:space-y-7 relative">
                                       {/* Wrapping Category Pills (side-by-side, wraps onto next line, no horizontal scroll) */}
@@ -3707,7 +3610,8 @@ const App: React.FC = () => {
                                                   }} 
                                                   onEdit={() => { setActiveMarketId(mkt.id); setProductToEdit({ product, index: originalIndex, catalogId: selectedCatId || undefined }); }} 
                                                   isFavorite={isFavorite(product.productName || '', mkt.id)} 
-                                                  onToggleFavorite={() => toggleFavorite(product, mkt.id)} 
+                                                  onToggleFavorite={() => toggleFavorite(product, mkt.id)}
+                                                  onExportInstagram={isAdmin ? () => exportGeneralProductPosterPng(product, mkt, mktCatalog?.endDate) : undefined}
                                                 />
                                               ))}
                                             </div>
@@ -3716,36 +3620,58 @@ const App: React.FC = () => {
                                       })}
                                     </div>
                                 ) : (
-                                  <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3.5 md:gap-4'}>
-                                    {displayedProducts.map((product, index) => (
-                                      <ProductCard 
-                                        key={`${mkt.id}-${product.productName}-${index}`} 
-                                        product={product} 
-                                        accentColor={mktAccent} 
-                                        catalogEndDate={mktCatalog?.endDate}
-                                        isAdmin={isAdmin} 
-                                        variant="compact"
-                                        isListMode={false}
-                                        isThreeColMobile={productViewMode === 'grid'}
-                                        hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
-                                        onClick={() => {
-                                          if (!isAdmin) {
-                                            const fullIdx = fullMarketModalList.findIndex(item => item.product === product);
-                                            setViewProduct({ 
-                                              product, 
-                                              marketName: mkt.name, 
-                                              marketId: mkt.id,
-                                              catalogEndDate: mktCatalog?.endDate,
-                                              productList: fullMarketModalList,
-                                              currentIndex: fullIdx >= 0 ? fullIdx : 0
-                                            });
-                                          }
-                                        }} 
-                                        onEdit={() => { setActiveMarketId(mkt.id); setProductToEdit({ product, index, catalogId: selectedCatId || undefined }); }} 
-                                        isFavorite={isFavorite(product.productName || '', mkt.id)} 
-                                        onToggleFavorite={() => toggleFavorite(product, mkt.id)} 
-                                      />
-                                    ))}
+                                  <div className="space-y-3">
+                                    {isDiscountSorted && (
+                                      <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs font-bold text-emerald-800">
+                                        <span className="flex items-center gap-1.5">
+                                          <Percent className="w-3.5 h-3.5 text-emerald-600" />
+                                          Məhsullar ən yüksək endirim faizinə görə sıralanıb
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setAdminSortByDiscount(false)}
+                                          className="text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+                                        >
+                                          Sıralamanı sıfırla
+                                        </button>
+                                      </div>
+                                    )}
+                                    <div className={productViewMode === 'grid' ? 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1.5 sm:gap-3.5 md:gap-4' : 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3.5 md:gap-4'}>
+                                      {displayedProducts.map((product, index) => {
+                                        const rawIdx = mktProducts.indexOf(product);
+                                        const resolvedIdx = rawIdx >= 0 ? rawIdx : index;
+                                        return (
+                                          <ProductCard 
+                                            key={`${mkt.id}-${product.productName}-${resolvedIdx}`} 
+                                            product={product} 
+                                            accentColor={mktAccent} 
+                                            catalogEndDate={mktCatalog?.endDate}
+                                            isAdmin={isAdmin} 
+                                            variant="compact"
+                                            isListMode={false}
+                                            isThreeColMobile={productViewMode === 'grid'}
+                                            hasCheaperAlternative={checkForCheaperAlternative(product, mkt.id)} 
+                                            onClick={() => {
+                                              if (!isAdmin) {
+                                                const fullIdx = fullMarketModalList.findIndex(item => item.product === product);
+                                                setViewProduct({ 
+                                                  product, 
+                                                  marketName: mkt.name, 
+                                                  marketId: mkt.id,
+                                                  catalogEndDate: mktCatalog?.endDate,
+                                                  productList: fullMarketModalList,
+                                                  currentIndex: fullIdx >= 0 ? fullIdx : 0
+                                                });
+                                              }
+                                            }} 
+                                            onEdit={() => { setActiveMarketId(mkt.id); setProductToEdit({ product, index: resolvedIdx, catalogId: selectedCatId || undefined }); }} 
+                                            isFavorite={isFavorite(product.productName || '', mkt.id)} 
+                                            onToggleFavorite={() => toggleFavorite(product, mkt.id)}
+                                            onExportInstagram={isAdmin ? () => exportGeneralProductPosterPng(product, mkt, mktCatalog?.endDate) : undefined}
+                                          />
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                 )
                               ) : (
@@ -3848,12 +3774,11 @@ const App: React.FC = () => {
 
         <ScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} selectedMarket={currentMarket?.name || ''} marketUrl={currentMarket?.url || ''} currentLogoUrl={currentMarket?.logoUrl} existingCatalogs={currentMarket?.catalogs} onStreamStart={handleStreamStart} onStreamUpdate={handleStreamUpdate} onStreamEnd={handleStreamEnd} onLogoUpdate={handleLogoUpdate} />
         <AdminLoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} onLoginSuccess={() => setIsAdmin(true)} />
-        <BannerEditorModal isOpen={isBannerModalOpen} onClose={() => setIsBannerModalOpen(false)} banner={activeBannerId === 'banner-1' ? banner1 : banner2} onSave={(b) => { if (activeBannerId === 'banner-1') updateBannerState(b, banner2); else updateBannerState(banner1, b); }} />
         <AddMarketModal isOpen={isAddMarketModalOpen} onClose={() => setIsAddMarketModalOpen(false)} onAdd={handleAddMarket} />
-        <SocialDealsModal isOpen={isSocialDealsModalOpen} onClose={() => setIsSocialDealsModalOpen(false)} markets={markets} onUpdateMarkets={updateMarketsState} />
         {marketToEdit && <EditMarketModal isOpen={!!marketToEdit} onClose={() => setMarketToEdit(null)} market={marketToEdit} onSave={handleUpdateMarket} onDelete={handleDeleteMarket} />}
         {productToEdit && activeMarketId && <EditProductModal isOpen={!!productToEdit} onClose={() => setProductToEdit(null)} product={productToEdit.product} onSave={handleUpdateProduct} />}
         <DatabaseModal isOpen={isDatabaseModalOpen} onClose={() => setIsDatabaseModalOpen(false)} onSave={saveDatabaseConfig} currentConfig={supabaseConfig} />
+        <BannerEditorModal isOpen={isFeaturedAdModalOpen} onClose={() => setIsFeaturedAdModalOpen(false)} banner={featuredAd} onSave={handleSaveFeaturedAd} />
         {(() => {
           const resolveModalMarketId = (item?: { product: DiscountProduct; marketName: string; marketId?: string } | null) => {
             if (!item) return '';
@@ -3913,13 +3838,12 @@ const App: React.FC = () => {
           onToggleFavorite={(prod, marketId) => toggleFavorite(prod, marketId)}
           onEnsureFavorite={(prod, marketId) => ensureFavorite(prod, marketId)}
         />
-        
-        <InstagramViewer 
-          isOpen={!!instagramViewerData} 
-          onClose={() => setInstagramViewerData(null)} 
-          posts={instagramViewerData?.posts || []} 
-          marketName={instagramViewerData?.name || ''} 
-          initialIndex={instagramViewerData?.initialIndex || 0}
+
+        <OpportunityInstagramModal
+          isOpen={opportunityInstagramIndex !== null}
+          onClose={() => setOpportunityInstagramIndex(null)}
+          items={groupedOpportunities}
+          initialIndex={opportunityInstagramIndex ?? 0}
         />
 
     </>

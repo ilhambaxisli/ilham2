@@ -65,6 +65,7 @@ export interface BannerData {
   title: string;
   link: string;
   isVisible: boolean;
+  fitMode?: 'contain' | 'cover';
 }
 
 export interface SupabaseConfig {

@@ -355,9 +355,9 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
             return (
               <div
                 key={`opp-slide-${idx}`}
-                className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
+                className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-2.5 sm:p-4"
               >
-                <div className="w-full max-w-sm min-h-[490px] sm:min-h-[530px] rounded-2xl bg-white/95 shadow-2xl" />
+                <div className="w-full max-w-[700px] min-h-[420px] sm:min-h-[500px] rounded-3xl bg-white/95 shadow-2xl" />
               </div>
             );
           }
@@ -372,8 +372,8 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
 
           const { cleanName, quantity: quantityBadge } = extractQuantityAndCleanName(item.productName);
           const trimmedItemImg = item.imageUrl?.trim();
-          const bingImg300 = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(item.productName + ' product')}&w=300&h=300&c=7&rs=1&p=0`;
-          const imgUrl = trimmedItemImg || bingImg300;
+          const bingImg450 = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(item.productName + ' product')}&w=450&h=450&c=7&rs=1&p=0`;
+          const imgUrl = trimmedItemImg || bingImg450;
 
           const slideIsFavorite = cheapest && checkIsFavorite
             ? checkIsFavorite(item.productName, cheapest.marketId)
@@ -387,7 +387,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                   onClose();
                 }
               }}
-              className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-3 sm:p-4"
+              className="w-full h-full shrink-0 snap-start snap-always flex items-center justify-center p-2.5 sm:p-5"
             >
               <div
                 onClick={(e) => e.stopPropagation()}
@@ -423,40 +423,63 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                   if (target.closest('button') || target.closest('a') || !cheapest) return;
                   triggerHeartBurst(item, cheapest, idx);
                 }}
-                className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden min-h-[490px] sm:min-h-[530px] max-h-[90dvh] z-10 border border-gray-100"
+                className="relative w-full max-w-[720px] bg-white shadow-2xl rounded-2xl sm:rounded-3xl flex flex-col overflow-hidden max-h-[90dvh] z-10 border border-gray-200/80"
               >
-                {/* Subtle Top Drag Pill */}
+                {/* Top Drag Pill */}
                 <div className="w-full flex items-center justify-center pt-2 pb-0.5 bg-white shrink-0">
                   <div className="w-10 h-1 rounded-full bg-gray-300" />
                 </div>
 
-                {/* Header Bar: Saving Summary Pill + Counter + Close */}
-                <div className="w-full px-3.5 py-2 bg-white border-b border-gray-100 flex items-center justify-between gap-2 z-20 shrink-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-black text-xs shadow-2xs shrink-0">
-                      <TrendingDown className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{saving.toFixed(2)} ₼ fərq</span>
-                    </div>
-                    <span className="text-[11px] font-bold text-gray-500 truncate">
+                {/* Clean Header Strip */}
+                <div className="w-full px-3.5 sm:px-6 py-2 bg-white border-b border-gray-100 flex items-center justify-between gap-2 z-20 shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 text-xs sm:text-sm">
+                    <TrendingDown className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-bold text-gray-700 truncate">{item.category}</span>
+                    <span className="text-gray-300" aria-hidden="true">·</span>
+                    <span className="font-semibold text-gray-500 whitespace-nowrap shrink-0">
                       {sortedVariants.length} market
                     </span>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     {!singleItemView && (
-                      <div
-                        className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
-                        title={`Fürsət: ${idx + 1} / ${totalCount}`}
-                      >
-                        <span className="text-emerald-600 font-black">{idx + 1}</span>
-                        <span className="text-gray-400 font-semibold">/</span>
-                        <span>{totalCount}</span>
-                      </div>
+                      <>
+                        {/* Mobile compact Up/Down buttons so they never overlap the right-column details */}
+                        <div className="sm:hidden flex items-center gap-1 mr-0.5">
+                          <button
+                            type="button"
+                            disabled={idx <= 0}
+                            onClick={(e) => { e.stopPropagation(); scrollToIndex(idx - 1); }}
+                            className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 disabled:opacity-35 flex items-center justify-center active:scale-90"
+                            title="Əvvəlki fürsət"
+                          >
+                            <ChevronUp className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx >= totalCount - 1}
+                            onClick={(e) => { e.stopPropagation(); scrollToIndex(idx + 1); }}
+                            className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 disabled:opacity-35 flex items-center justify-center active:scale-90"
+                            title="Növbəti fürsət"
+                          >
+                            <ChevronDown className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+                        </div>
+
+                        <div
+                          className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs tracking-tight select-none tabular-nums"
+                          title={`Fürsət: ${idx + 1} / ${totalCount}`}
+                        >
+                          <span className="text-emerald-600 font-black">{idx + 1}</span>
+                          <span className="text-gray-400 font-semibold">/</span>
+                          <span>{totalCount}</span>
+                        </div>
+                      </>
                     )}
 
                     <button
                       onClick={(e) => { e.stopPropagation(); onClose(); }}
-                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
                       title="Bağla"
                     >
                       <X className="w-5 h-5" />
@@ -464,212 +487,198 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                   </div>
                 </div>
 
-                {/* Product Image Area */}
-                <div className="relative w-full h-44 sm:h-52 bg-gray-50 flex items-center justify-center shrink-0 select-none overflow-hidden">
-                  <img
-                    src={imgUrl}
-                    alt={cleanName}
-                    draggable={false}
-                    onError={(e) => {
-                      if (e.currentTarget.dataset.fallbackApplied !== '1') {
-                        e.currentTarget.dataset.fallbackApplied = '1';
-                        e.currentTarget.src = bingImg300;
-                      }
-                    }}
-                    className="w-full h-full p-2.5 object-contain mix-blend-multiply pointer-events-none select-none"
-                  />
-
-                  {/* Double-tap Center Heart Burst Animation */}
-                  {burstSlideIdx === idx && heartBurstPhase !== 'hidden' && (
-                    <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
-                      <Heart
-                        className={`w-24 h-24 fill-red-500 text-red-500 drop-shadow-[0_8px_20px_rgba(239,68,68,0.45)] transition-all duration-300 ease-out ${
-                          heartBurstPhase === 'pop'
-                            ? 'scale-110 opacity-100'
-                            : 'scale-150 opacity-0'
-                        }`}
-                        strokeWidth={1.5}
-                      />
-                    </div>
-                  )}
-
-                  {/* Top-Right Heart / Favorite Toggle Button */}
-                  {cheapest && onToggleFavorite && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const prod = resolveProductForMarket(item, cheapest);
-                        onToggleFavorite(prod, cheapest.marketId);
-                      }}
-                      className={`absolute top-2.5 right-2.5 z-20 w-9 h-9 rounded-full shadow-md flex items-center justify-center transition-all active:scale-90 cursor-pointer border ${
-                        slideIsFavorite
-                          ? 'bg-red-50 border-red-200 text-red-500'
-                          : 'bg-white/95 border-gray-100 text-gray-400 hover:text-red-500'
-                      }`}
-                      title={slideIsFavorite ? "Seçilənlərdən çıxar" : "Ən ucuzunu seçilənlərə əlavə et"}
-                    >
-                      <Heart
-                        className={`w-5 h-5 transition-transform duration-200 ${slideIsFavorite ? 'fill-red-500 text-red-500 scale-110' : ''}`}
-                        strokeWidth={2.2}
-                      />
-                    </button>
-                  )}
-
-                  {/* Mobile TikTok quick up/down buttons */}
-                  <div className="sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
-                    {idx > 0 && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); scrollToIndex(idx - 1); }}
-                        className="w-8 h-8 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
-                        title="Əvvəlki fürsət"
-                      >
-                        <ChevronUp className="w-5 h-5 stroke-[2.5]" />
-                      </button>
-                    )}
-                    {idx < totalCount - 1 && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); scrollToIndex(idx + 1); }}
-                        className="w-8 h-8 rounded-full bg-white/90 shadow-md text-gray-700 flex items-center justify-center active:scale-90"
-                        title="Növbəti fürsət"
-                      >
-                        <ChevronDown className="w-5 h-5 stroke-[2.5]" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Top-Left Saving Percentage Badge */}
-                  {savingPct > 0 && (
-                    <div className="absolute top-2.5 left-2.5 bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-black shadow-sm">
-                      -{savingPct}% Qənaət
-                    </div>
-                  )}
-
-                  {/* Bottom-Right Quantity Badge */}
-                  {quantityBadge && (
-                    <div className="absolute bottom-2.5 right-2.5 bg-black text-white px-3 py-1.5 rounded-lg text-sm sm:text-base font-black shadow-lg tracking-tight leading-none">
-                      {quantityBadge}
-                    </div>
-                  )}
+                {/* Product Title */}
+                <div className="px-3.5 sm:px-6 pt-2.5 sm:pt-4 pb-2 sm:pb-3 shrink-0">
+                  <h2
+                    style={{ WebkitUserSelect: 'text', WebkitTouchCallout: 'default' }}
+                    className="text-base sm:text-xl md:text-2xl font-extrabold text-gray-900 leading-snug text-center line-clamp-2 select-text cursor-text"
+                  >
+                    {item.productName}
+                  </h2>
                 </div>
 
-                {/* Product Name + Price Difference Breakdown */}
-                <div className={`p-4 sm:p-5 flex-1 flex flex-col justify-between ${sortedVariants.length > 3 ? 'overflow-y-auto overscroll-y-contain' : 'overflow-hidden'}`}>
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="inline-block px-2.5 py-0.5 text-[11px] font-bold text-gray-600 bg-gray-100 rounded-lg">
-                        {item.category}
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
-                        {saving.toFixed(2)} ₼ Qənaət
-                      </span>
-                    </div>
+                {/* 2-Column Split Content: BIG Product Image Left + Market Price Details Right */}
+                <div className="flex-1 min-h-0 px-3 sm:px-6 pb-2.5 sm:pb-4 grid grid-cols-12 gap-2.5 sm:gap-5 items-stretch overflow-hidden">
+                  {/* Left: Large Product Photo Showcase */}
+                  <div className="col-span-5 sm:col-span-6 bg-gray-50/95 border border-gray-200/80 rounded-xl sm:rounded-[24px] p-2 sm:p-4 flex items-center justify-center relative overflow-hidden min-h-[200px] sm:min-h-[290px]">
+                    <img
+                      src={imgUrl}
+                      alt={cleanName}
+                      draggable={false}
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        if (e.currentTarget.dataset.fallbackApplied !== '1') {
+                          e.currentTarget.dataset.fallbackApplied = '1';
+                          e.currentTarget.src = bingImg450;
+                        }
+                      }}
+                      className="w-full h-full max-h-[220px] sm:max-h-[320px] object-contain mix-blend-multiply pointer-events-none select-none"
+                    />
 
-                    <h2
-                      style={{ WebkitUserSelect: 'text', WebkitTouchCallout: 'default' }}
-                      className="text-lg sm:text-xl font-bold text-gray-900 leading-snug mb-3 line-clamp-2 select-text cursor-text"
-                    >
-                      {item.productName}
-                    </h2>
-
-                    {/* Cheapest vs Highest Price Strip */}
-                    {cheapest && priciest && (
-                      <div className="flex items-center justify-between bg-emerald-50/70 border border-emerald-200/80 rounded-xl px-3 py-2 mb-3">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-xl sm:text-2xl font-black text-emerald-600 leading-none">
-                            {cheapest.originalPriceStr} <span className="text-base">₼</span>
-                          </span>
-                          {maxPrice > minPrice && (
-                            <span className="text-xs sm:text-sm text-red-500 line-through font-semibold leading-none">
-                              {priciest.originalPriceStr} ₼
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[11px] font-bold text-emerald-700 block leading-tight">
-                            Qiymət fərqi
-                          </span>
-                          <span className="text-sm font-black text-emerald-700 leading-none">
-                            {saving.toFixed(2)} ₼
-                          </span>
-                        </div>
+                    {/* Double-tap Center Heart Burst Animation */}
+                    {burstSlideIdx === idx && heartBurstPhase !== 'hidden' && (
+                      <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
+                        <Heart
+                          className={`w-20 h-20 sm:w-24 sm:h-24 fill-red-500 text-red-500 drop-shadow-[0_8px_20px_rgba(239,68,68,0.45)] transition-all duration-300 ease-out ${
+                            heartBurstPhase === 'pop'
+                              ? 'scale-110 opacity-100'
+                              : 'scale-150 opacity-0'
+                          }`}
+                          strokeWidth={1.5}
+                        />
                       </div>
                     )}
 
-                    {/* Market-by-Market Price Difference List */}
-                    <div className="space-y-1.5">
-                      {sortedVariants.map((variant, vIdx) => {
-                        const isCheapest = variant.price === minPrice;
-                        const diffFromCheapest = variant.price - minPrice;
-                        const rowContent = (
-                          <>
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              <div className="w-7 h-7 rounded-full bg-white border border-gray-200/80 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
-                                {variant.logoUrl ? (
-                                  <img src={variant.logoUrl} alt={variant.marketName} className="w-full h-full object-contain p-0.5" />
-                                ) : (
-                                  <span className={`font-bold text-${variant.themeColor}-700 text-xs`}>{variant.logoPlaceholder}</span>
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <div className={`text-xs sm:text-sm font-bold truncate ${isCheapest ? 'text-gray-900' : 'text-gray-700'}`}>
-                                  {variant.marketName}
-                                </div>
-                                <div className={`text-[10px] sm:text-[11px] font-bold ${isCheapest ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                  {isCheapest ? 'Ən sərfəli qiymət' : `+${diffFromCheapest.toFixed(2)} ₼ baha`}
-                                </div>
-                              </div>
-                            </div>
+                    {/* Top-Right Heart / Favorite Toggle Button on Image Box */}
+                    {cheapest && onToggleFavorite && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const prod = resolveProductForMarket(item, cheapest);
+                          onToggleFavorite(prod, cheapest.marketId);
+                        }}
+                        className={`absolute top-2 right-2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-full shadow-md flex items-center justify-center transition-all active:scale-90 cursor-pointer border ${
+                          slideIsFavorite
+                            ? 'bg-red-50 border-red-200 text-red-500'
+                            : 'bg-white/95 border-gray-200/80 text-gray-400 hover:text-red-500'
+                        }`}
+                        title={slideIsFavorite ? "Seçilənlərdən çıxar" : "Ən ucuzunu seçilənlərə əlavə et"}
+                      >
+                        <Heart
+                          className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-200 ${slideIsFavorite ? 'fill-red-500 text-red-500 scale-110' : ''}`}
+                          strokeWidth={2.2}
+                        />
+                      </button>
+                    )}
 
-                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                              <span className={`text-sm sm:text-base font-black whitespace-nowrap ${isCheapest ? 'text-emerald-700' : 'text-gray-800'}`}>
-                                {variant.originalPriceStr} ₼
-                              </span>
-                              {onMarketClick && (
-                                <ArrowRight className={`w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 ${isCheapest ? 'text-emerald-500' : 'text-gray-400'}`} />
-                              )}
-                            </div>
-                          </>
-                        );
-                        const rowClass = `w-full flex items-center justify-between p-2.5 rounded-xl border transition-all text-left group ${
-                          onMarketClick ? 'cursor-pointer' : 'cursor-default'
-                        } ${
-                          isCheapest
-                            ? `bg-emerald-50 border-emerald-300 ${onMarketClick ? 'hover:border-emerald-400' : ''} shadow-2xs`
-                            : `bg-gray-50/90 border-gray-200/70 ${onMarketClick ? 'hover:bg-gray-100/80 hover:border-gray-300' : ''}`
-                        }`;
-                        return onMarketClick ? (
-                          <button
-                            key={`${variant.marketId}-${vIdx}`}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onMarketClick(variant.marketId, item.productName);
-                            }}
-                            className={rowClass}
-                          >
-                            {rowContent}
-                          </button>
-                        ) : (
-                          <div key={`${variant.marketId}-${vIdx}`} className={rowClass}>
-                            {rowContent}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {/* Bottom-Right Quantity/Weight Badge */}
+                    {quantityBadge && (
+                      <div className="absolute bottom-2 right-2 bg-black text-white px-2 sm:px-2.5 py-1 rounded-md sm:rounded-lg text-[11px] sm:text-sm font-black shadow-md tracking-tight leading-none">
+                        {quantityBadge}
+                      </div>
+                    )}
                   </div>
 
-                  {/* TikTok Swipe & Double-Tap Hint */}
-                  {!singleItemView && (
-                    <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-center gap-2 text-gray-400 text-[11px] font-medium shrink-0">
-                      <ChevronUp className="w-3.5 h-3.5 animate-bounce" />
-                      <span>Yuxarı sürüşdürün · Bəyənmək üçün 2 dəfə toxunun</span>
-                      <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+                  {/* Right: Market Prices & Price Differences */}
+                  <div className="col-span-7 sm:col-span-6 flex flex-col overflow-y-auto overscroll-y-contain pr-0.5 max-h-[260px] sm:max-h-[340px]">
+                    <div className="my-auto flex flex-col gap-1.5 sm:gap-2.5">
+                    {sortedVariants.map((variant, vIdx) => {
+                      const isCheapest = vIdx === 0 || variant.price === minPrice;
+                      const diffFromCheapest = variant.price - minPrice;
+                      const shortMkt = variant.marketName.replace(/\s+Market$/i, '') || variant.marketName;
+
+                      const rowContent = (
+                        <div className="flex flex-col gap-1 sm:gap-1.5 w-full">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+                              <div
+                                className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center overflow-hidden p-0.5 sm:p-1 shrink-0 border ${
+                                  isCheapest ? 'border-emerald-500' : 'border-gray-200'
+                                }`}
+                              >
+                                {variant.logoUrl ? (
+                                  <img src={variant.logoUrl} alt={variant.marketName} className="w-full h-full object-contain" />
+                                ) : (
+                                  <span className={`font-black text-[10px] sm:text-xs text-${variant.themeColor}-700`}>
+                                    {variant.logoPlaceholder}
+                                  </span>
+                                )}
+                              </div>
+                              <span className={`text-xs sm:text-base font-extrabold truncate ${isCheapest ? 'text-emerald-950' : 'text-gray-800'}`}>
+                                {shortMkt}
+                              </span>
+                            </div>
+
+                            {isCheapest && (
+                              <span className="px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg bg-emerald-600 text-white text-[9px] sm:text-[11px] font-black tracking-wide shrink-0 leading-tight">
+                                ƏN UCUZ
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-1.5 pl-0.5">
+                            <span className={`font-black leading-none tabular-nums ${isCheapest ? 'text-lg sm:text-2xl text-emerald-600' : 'text-base sm:text-xl text-gray-800'}`}>
+                              {variant.originalPriceStr} ₼
+                            </span>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {!isCheapest && diffFromCheapest > 0 && (
+                                <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md sm:rounded-lg bg-rose-50 border border-rose-200 text-rose-600 text-[10px] sm:text-xs font-extrabold leading-none whitespace-nowrap tabular-nums">
+                                  +{diffFromCheapest.toFixed(2)} ₼
+                                </span>
+                              )}
+                              {onMarketClick && (
+                                <ArrowRight className={`w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 ${isCheapest ? 'text-emerald-600' : 'text-gray-400'}`} />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+
+                      const rowClass = `w-full rounded-xl sm:rounded-2xl px-2.5 py-2 sm:px-3.5 sm:py-2.5 transition-all text-left group shrink-0 ${
+                        onMarketClick ? 'cursor-pointer' : 'cursor-default'
+                      } ${
+                        isCheapest
+                          ? `bg-emerald-50 border-2 border-emerald-500 shadow-2xs ${onMarketClick ? 'hover:border-emerald-600' : ''}`
+                          : `bg-gray-50 border border-gray-200 ${onMarketClick ? 'hover:bg-gray-100/80 hover:border-gray-300' : ''}`
+                      }`;
+
+                      return onMarketClick ? (
+                        <button
+                          key={`${variant.marketId}-${vIdx}`}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMarketClick(variant.marketId, item.productName);
+                          }}
+                          className={rowClass}
+                        >
+                          {rowContent}
+                        </button>
+                      ) : (
+                        <div key={`${variant.marketId}-${vIdx}`} className={rowClass}>
+                          {rowContent}
+                        </div>
+                      );
+                    })}
                     </div>
-                  )}
+                  </div>
                 </div>
+
+                {/* Bottom Hero Savings Highlight Strip */}
+                <div className="px-3 sm:px-6 pb-2.5 sm:pb-4 shrink-0">
+                  <div
+                    className="px-3.5 py-2.5 sm:px-5 sm:py-3.5 rounded-xl sm:rounded-2xl flex items-center justify-between gap-2.5 shadow-md"
+                    style={{ background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)' }}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-lg sm:text-2xl font-black text-white tracking-tight leading-none tabular-nums">
+                        {saving.toFixed(2)} ₼ QƏNAƏT!
+                      </div>
+                      {cheapest?.marketName && (
+                        <div className="text-[11px] sm:text-sm font-bold text-emerald-50 mt-1 truncate leading-none">
+                          Ən sərfəli: {cheapest.marketName}
+                        </div>
+                      )}
+                    </div>
+
+                    {savingPct > 0 && (
+                      <div className="px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl bg-white text-emerald-700 text-base sm:text-2xl font-black leading-none shadow-xs shrink-0 tabular-nums">
+                        -{savingPct}%
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* TikTok Swipe & Double-Tap Hint */}
+                {!singleItemView && (
+                  <div className="pb-2.5 px-3 flex items-center justify-center gap-1.5 text-gray-400 text-[10px] sm:text-[11px] font-medium shrink-0">
+                    <ChevronUp className="w-3.5 h-3.5" />
+                    <span>Yuxarı sürüşdürün · Bəyənmək üçün 2 dəfə toxunun</span>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </div>
+                )}
               </div>
             </div>
           );

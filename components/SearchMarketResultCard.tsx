@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DiscountProduct, MarketData } from '../types';
 import ProductCard from './ProductCard';
+import { exportGeneralProductPosterPng } from './OpportunityInstagramModal';
 
 interface SearchMarketResultCardProps {
   market: MarketData;
@@ -76,6 +77,7 @@ const SearchMarketResultCard: React.FC<SearchMarketResultCardProps> = ({
         onEdit={() => onEditProduct(product)}
         isFavorite={fav}
         onToggleFavorite={() => onToggleFavorite(product, market.id)}
+        onExportInstagram={isAdmin ? () => exportGeneralProductPosterPng(product, market, marketEndDate) : undefined}
       />
     );
   };

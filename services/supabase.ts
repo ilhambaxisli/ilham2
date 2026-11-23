@@ -28,11 +28,10 @@ export const subscribeToMarkets = (callback: (markets: MarketData[]) => void) =>
     .eq('id', 'markets')
     .single()
     .then(({ data, error }) => {
-      if (!error && data?.data) {
+      if (!error && Array.isArray(data?.data)) {
         callback(data.data as MarketData[]);
-      } else {
-        // If not found, callback empty to init
-        // callback([]); 
+      } else if (error) {
+        console.error("Error fetching markets from Supabase:", error);
       }
     });
 
@@ -43,8 +42,9 @@ export const subscribeToMarkets = (callback: (markets: MarketData[]) => void) =>
       'postgres_changes',
       { event: '*', schema: 'public', table: 'app_settings', filter: 'id=eq.markets' },
       (payload) => {
-        if (payload.new && (payload.new as any).data) {
-          callback((payload.new as any).data as MarketData[]);
+        const nextData = (payload.new as any)?.data;
+        if (Array.isArray(nextData)) {
+          callback(nextData as MarketData[]);
         }
       }
     )
@@ -55,14 +55,18 @@ export const subscribeToMarkets = (callback: (markets: MarketData[]) => void) =>
   };
 };
 
-export const saveMarkets = async (markets: MarketData[]) => {
-  if (!supabase) return;
-  
+export const saveMarkets = async (markets: MarketData[]): Promise<boolean> => {
+  if (!supabase || !Array.isArray(markets)) return false;
+
   const { error } = await supabase
     .from('app_settings')
-    .upsert({ id: 'markets', data: markets });
+    .upsert({ id: 'markets', data: markets }, { onConflict: 'id' });
 
-  if (error) console.error("Error saving markets:", error);
+  if (error) {
+    console.error("Error saving markets:", error);
+    return false;
+  }
+  return true;
 };
 
 // --- Banners ---
@@ -108,7 +112,7 @@ export const saveBanners = async (banner1: BannerData, banner2: BannerData) => {
   
   const { error } = await supabase
     .from('app_settings')
-    .upsert({ id: 'banners', data: { banner1, banner2 } });
+    .upsert({ id: 'banners', data: { banner1, banner2 } }, { onConflict: 'id' });
 
   if (error) console.error("Error saving banners:", error);
 };

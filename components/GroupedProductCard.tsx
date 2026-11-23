@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { ProductCategory, DiscountProduct } from '../types';
 import { 
   Apple, Beef, Milk, Wheat, Coffee, Cookie, SprayCan, Sparkles, Home, Baby, Package, 
-  ChevronRight, TrendingDown 
+  ChevronRight, TrendingDown, Download, Loader2, Check 
 } from 'lucide-react';
 
 interface ProductVariant {
@@ -22,6 +22,8 @@ interface GroupedProductCardProps {
   imageUrl?: string;
   variants: ProductVariant[];
   onClick?: () => void;
+  isAdmin?: boolean;
+  onExportInstagram?: (e: React.MouseEvent) => void | Promise<void>;
 }
 
 const getCategoryIcon = (category: ProductCategory) => {
@@ -46,10 +48,14 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
   category, 
   imageUrl, 
   variants,
-  onClick
+  onClick,
+  isAdmin = false,
+  onExportInstagram
 }) => {
   const [imageError, setImageError] = useState(false);
   const [useFallbackBing, setUseFallbackBing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportDone, setExportDone] = useState(false);
 
   // Find min price to highlight
   const minPrice = Math.min(...variants.map(v => v.price));
@@ -122,6 +128,41 @@ const GroupedProductCard: React.FC<GroupedProductCardProps> = ({
           <div className="w-full h-full flex items-center justify-center bg-gray-50 flex-col gap-1 text-gray-300">
             {getCategoryIcon(category)}
           </div>
+        )}
+
+        {/* Admin-only 1-click instant Instagram poster download button */}
+        {isAdmin && onExportInstagram && (
+          <button
+            type="button"
+            disabled={isExporting}
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (isExporting) return;
+              setIsExporting(true);
+              try {
+                await onExportInstagram(e);
+                setExportDone(true);
+                window.setTimeout(() => setExportDone(false), 1600);
+              } catch (err) {
+                console.error('Export failed:', err);
+              } finally {
+                setIsExporting(false);
+              }
+            }}
+            className={`absolute bottom-1.5 right-1.5 z-20 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[10px] font-bold shadow-md backdrop-blur-xs transition-all active:scale-90 cursor-pointer ${
+              exportDone ? 'bg-emerald-600' : 'bg-gray-900/85 hover:bg-emerald-600'
+            }`}
+            title="Instagram şəkli olaraq birbaşa indir"
+          >
+            {isExporting ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : exportDone ? (
+              <Check className="w-3 h-3" />
+            ) : (
+              <Download className="w-3 h-3" />
+            )}
+            <span>{exportDone ? 'OK' : 'IG'}</span>
+          </button>
         )}
       </div>
 
