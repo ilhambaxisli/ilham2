@@ -62,10 +62,25 @@ export interface MarketData {
 export interface BannerData {
   id: string;
   imageUrl: string;
+  htmlContent?: string;
   title: string;
   link: string;
   isVisible: boolean;
   fitMode?: 'contain' | 'cover';
+}
+
+export interface UpcomingCampaign {
+  id: string;
+  marketId: string;
+  title: string;
+  imageUrl: string;
+  htmlContent?: string;
+  isVisible: boolean;
+  fitMode?: 'contain' | 'cover';
+  activateAt: string; // YYYY-MM-DD local activation date
+  endDate?: string;   // YYYY-MM-DD optional end date for promoted products
+  products: DiscountProduct[];
+  promotedAt?: string;
 }
 
 export interface SupabaseConfig {

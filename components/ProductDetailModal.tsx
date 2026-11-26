@@ -9,11 +9,13 @@ import {
   Clock, 
   ArrowRight,
   Heart,
-  ShoppingBag
+  ShoppingBag,
+  Megaphone
 } from 'lucide-react';
-import { DiscountProduct, MarketData } from '../types';
+import { DiscountProduct, MarketData, BannerData } from '../types';
 import { parseDateString, extractProductEndDate, calculateDaysLeft, extractQuantityAndCleanName, getExplicitProductImageUrl } from './ProductCard';
 import OpportunityDetailModal, { OpportunityItem } from './OpportunityDetailModal';
+import SwipeAdSlide from './SwipeAdSlide';
 
 export interface ModalProductItem {
   product: DiscountProduct;
@@ -50,11 +52,18 @@ interface ProductDetailModalProps {
   onToggleFavoriteItem?: (item: ModalProductItem) => void;
   onEnsureFavoriteItem?: (item: ModalProductItem) => void;
   onSelectMarketInModal?: (marketId: string) => void;
+  swipeAds?: BannerData[];
+  swipeAdFirstOffset?: number;
+  onSwipeProgress?: () => void;
 }
 
 interface ProductDetailModalContentProps extends ProductDetailModalProps {
   items: ModalProductItem[];
 }
+
+type ProductDeckEntry =
+  | { type: 'product'; productIndex: number; item: ModalProductItem }
+  | { type: 'ad'; ad: BannerData; nearestProductIndex: number };
 
 interface ProductImageSlideProps {
   src: string;
@@ -390,12 +399,58 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   checkIsFavorite,
   onToggleFavoriteItem,
   onEnsureFavoriteItem,
-  onSelectMarketInModal
+  onSelectMarketInModal,
+  swipeAds = [],
+  swipeAdFirstOffset = 5,
+  onSwipeProgress
 }) => {
   const effectiveTotal = totalCount ?? items.length;
   const clampedPropIdx = Math.max(0, Math.min(Math.max(items.length - 1, 0), currentIndex));
 
-  const [activeIdx, setActiveIdx] = useState<number>(clampedPropIdx);
+  const [mountAdConfig] = useState(() => ({
+    offset: Math.max(1, swipeAdFirstOffset),
+    ads: swipeAds.filter(a => a.isVisible && ((a.htmlContent || '').trim() || (a.imageUrl || '').trim() || (a.title || '').trim())),
+    entryProductIdx: clampedPropIdx,
+  }));
+
+  const deckEntries: ProductDeckEntry[] = useMemo(() => {
+    const { offset, ads, entryProductIdx } = mountAdConfig;
+    if (ads.length === 0 || items.length <= 1) {
+      return items.map((item, productIndex) => ({ type: 'product', productIndex, item }));
+    }
+    const entries: ProductDeckEntry[] = [];
+    let stepsFromEntry = 0;
+    let nextAdAt = offset;
+    let adCursor = 0;
+    for (let pIdx = 0; pIdx < items.length; pIdx++) {
+      if (pIdx >= entryProductIdx) {
+        if (stepsFromEntry === nextAdAt) {
+          entries.push({
+            type: 'ad',
+            ad: ads[adCursor % ads.length],
+            nearestProductIndex: pIdx,
+          });
+          adCursor++;
+          stepsFromEntry++;
+          nextAdAt += 10;
+        }
+      }
+      entries.push({ type: 'product', productIndex: pIdx, item: items[pIdx] });
+      if (pIdx >= entryProductIdx) {
+        stepsFromEntry++;
+      }
+    }
+    return entries;
+  }, [items, mountAdConfig]);
+
+  const productToDeckIdx = useCallback((prodIdx: number) => {
+    const found = deckEntries.findIndex(e => e.type === 'product' && e.productIndex === prodIdx);
+    return found >= 0 ? found : 0;
+  }, [deckEntries]);
+
+  const initialDeckIdx = useMemo(() => productToDeckIdx(clampedPropIdx), [productToDeckIdx, clampedPropIdx]);
+
+  const [activeIdx, setActiveIdx] = useState<number>(initialDeckIdx);
   const [burstSlideIdx, setBurstSlideIdx] = useState<number | null>(null);
   const [heartBurstPhase, setHeartBurstPhase] = useState<'hidden' | 'pop' | 'fade'>('hidden');
   const [quickOpportunityItem, setQuickOpportunityItem] = useState<OpportunityItem | null>(null);
@@ -435,15 +490,15 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   });
 
   const deckRef = useRef<HTMLDivElement | null>(null);
-  const activeIdxRef = useRef<number>(clampedPropIdx);
-  const targetScrollIdxRef = useRef<number>(clampedPropIdx);
+  const activeIdxRef = useRef<number>(initialDeckIdx);
+  const targetScrollIdxRef = useRef<number>(initialDeckIdx);
   const prevItemsRef = useRef<ModalProductItem[]>(items);
   const needsScrollSyncRef = useRef<boolean>(true);
   const userInteractedRef = useRef<boolean>(false);
   const isProgrammaticScrollRef = useRef<boolean>(true);
   const lastReportedIdxRef = useRef<number | null>(null);
-  const lastTapTimeRef = useRef<number>(0);
   const tapStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastTapTimeRef = useRef<number>(0);
   const lastTouchTimeRef = useRef<number>(0);
   const burstTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -493,9 +548,11 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   useLayoutEffect(() => {
     const el = deckRef.current;
     const listChanged = prevItemsRef.current !== items;
+    const currentEntry = deckEntries[activeIdxRef.current];
+    const currentProductIdx = currentEntry?.type === 'product' ? currentEntry.productIndex : currentEntry?.nearestProductIndex;
     const indexChangedExternally =
       clampedPropIdx !== lastReportedIdxRef.current &&
-      clampedPropIdx !== activeIdxRef.current;
+      clampedPropIdx !== currentProductIdx;
 
     if (listChanged || indexChangedExternally) {
       needsScrollSyncRef.current = true;
@@ -504,14 +561,15 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
     if (!needsScrollSyncRef.current) return;
 
+    const targetDeckIdx = productToDeckIdx(clampedPropIdx);
     userInteractedRef.current = false;
     isProgrammaticScrollRef.current = true;
-    targetScrollIdxRef.current = clampedPropIdx;
-    activeIdxRef.current = clampedPropIdx;
+    targetScrollIdxRef.current = targetDeckIdx;
+    activeIdxRef.current = targetDeckIdx;
     lastReportedIdxRef.current = clampedPropIdx;
-    setActiveIdx(clampedPropIdx);
+    setActiveIdx(targetDeckIdx);
 
-    snapToSlideInstant(clampedPropIdx);
+    snapToSlideInstant(targetDeckIdx);
 
     let cancelled = false;
     let rafId: number | null = null;
@@ -730,12 +788,16 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     const el = deckRef.current;
     if (!el) return;
     markUserInteraction();
-    const clamped = Math.max(0, Math.min(items.length - 1, targetIdx));
+    const clamped = Math.max(0, Math.min(deckEntries.length - 1, targetIdx));
     if (Math.abs(clamped - activeIdxRef.current) > 4) {
       activeIdxRef.current = clamped;
-      lastReportedIdxRef.current = clamped;
       setActiveIdx(clamped);
-      onSelectIndex?.(clamped);
+      const entry = deckEntries[clamped];
+      if (entry?.type === 'product') {
+        lastReportedIdxRef.current = entry.productIndex;
+        onSelectIndex?.(entry.productIndex);
+      }
+      onSwipeProgress?.();
       snapToSlideInstant(clamped);
       return;
     }
@@ -747,20 +809,28 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
       top: targetTop,
       behavior: 'smooth'
     });
-  }, [items.length, markUserInteraction, onSelectIndex, snapToSlideInstant]);
+  }, [deckEntries, markUserInteraction, onSelectIndex, onSwipeProgress, snapToSlideInstant]);
+
+  const scrollToProductIndex = useCallback((prodIdx: number) => {
+    scrollToIndex(productToDeckIdx(prodIdx));
+  }, [productToDeckIdx, scrollToIndex]);
 
   const handleDeckScroll = () => {
     const el = deckRef.current;
-    if (!el || el.clientHeight === 0 || items.length === 0) return;
+    if (!el || el.clientHeight === 0 || deckEntries.length === 0) return;
     if (isProgrammaticScrollRef.current && !userInteractedRef.current) {
       return;
     }
-    const newIdx = Math.max(0, Math.min(items.length - 1, Math.round(el.scrollTop / el.clientHeight)));
+    const newIdx = Math.max(0, Math.min(deckEntries.length - 1, Math.round(el.scrollTop / el.clientHeight)));
     if (newIdx !== activeIdxRef.current) {
       activeIdxRef.current = newIdx;
-      lastReportedIdxRef.current = newIdx;
       setActiveIdx(newIdx);
-      onSelectIndex?.(newIdx);
+      onSwipeProgress?.();
+      const entry = deckEntries[newIdx];
+      if (entry?.type === 'product') {
+        lastReportedIdxRef.current = entry.productIndex;
+        onSelectIndex?.(entry.productIndex);
+      }
     }
   };
 
@@ -769,7 +839,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (quickOpportunityItem) return;
       if (e.key === 'ArrowDown' || e.key === 'PageDown') {
-        if (activeIdxRef.current < items.length - 1) {
+        if (activeIdxRef.current < deckEntries.length - 1) {
           e.preventDefault();
           scrollToIndex(activeIdxRef.current + 1);
         }
@@ -784,9 +854,14 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items.length, scrollToIndex, onClose, quickOpportunityItem]);
+  }, [deckEntries.length, scrollToIndex, onClose, quickOpportunityItem]);
 
-  const activeItem = items[activeIdx] || items[0] || null;
+  const activeDeckEntry = deckEntries[activeIdx] || deckEntries[0] || null;
+  const isActiveAdSlide = activeDeckEntry?.type === 'ad';
+  const activeProductIdx = activeDeckEntry
+    ? (activeDeckEntry.type === 'product' ? activeDeckEntry.productIndex : activeDeckEntry.nearestProductIndex)
+    : 0;
+  const activeItem = items[activeProductIdx] || items[0] || null;
 
   // Module-cached WeakMap lookup (zero date parsing upfront)
   const allProductsPriceIndex = useMemo(() => {
@@ -943,7 +1018,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
   }, [onEnsureFavoriteItem, onEnsureFavorite, onToggleFavorite]);
 
   const hasPrev = activeIdx > 0;
-  const hasNext = activeIdx < items.length - 1;
+  const hasNext = activeIdx < deckEntries.length - 1;
 
   return (
     <div className="fixed inset-0 z-[100] select-none overflow-hidden">
@@ -970,8 +1045,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
 
         {effectiveTotal > 0 && (
           <div className="bg-black/80 backdrop-blur-md text-white text-[11px] font-black px-2.5 py-1.5 rounded-full shadow-lg border border-white/10 tracking-tight flex flex-col items-center leading-none">
-            <span>{activeIdx + 1}</span>
-            <span className="text-[8px] text-gray-400 font-normal">/ {effectiveTotal}</span>
+            <span>{isActiveAdSlide ? 'Reklam' : activeProductIdx + 1}</span>
+            {!isActiveAdSlide && <span className="text-[8px] text-gray-400 font-normal">/ {effectiveTotal}</span>}
           </div>
         )}
 
@@ -1009,7 +1084,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
               ref={modalShellRef}
               onClick={(e) => e.stopPropagation()}
               style={{ transformOrigin: 'center center', willChange: 'transform', touchAction: 'pan-x pan-y' }}
-              className="relative w-full max-w-sm bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden h-[520px] sm:h-[560px] max-h-[90dvh] z-10 border border-gray-100"
+              className="relative w-full max-w-sm sm:max-w-[430px] md:max-w-[460px] bg-white shadow-2xl rounded-2xl flex flex-col overflow-hidden h-[520px] sm:h-[580px] md:h-[610px] max-h-[90dvh] z-10 border border-gray-100"
             >
               {/* Subtle Top Drag Pill */}
               <div className="w-full flex items-center justify-center pt-2 pb-0.5 bg-white shrink-0">
@@ -1030,6 +1105,18 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                   )}
 
                   {(() => {
+                    if (isActiveAdSlide) {
+                      return (
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500 text-white font-black flex items-center justify-center shadow-2xs shrink-0">
+                            <Megaphone className="w-4 h-4 sm:w-5 sm:h-5" />
+                          </div>
+                          <span className="font-black text-amber-600 text-base sm:text-lg tracking-tight truncate">
+                            Sponsorlu Reklam
+                          </span>
+                        </div>
+                      );
+                    }
                     const targetMarketId = activeMkt?.id || activeItem?.marketId;
                     if (onSelectMarketInModal && targetMarketId) {
                       return (
@@ -1084,16 +1171,20 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {effectiveTotal > 0 && (
+                  {isActiveAdSlide ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none">
+                      Reklam
+                    </span>
+                  ) : effectiveTotal > 0 ? (
                     <div 
                       className="inline-flex items-center gap-0.5 px-2.5 py-0.5 rounded-full bg-gray-100 border border-gray-200/90 text-gray-700 font-extrabold text-[11px] sm:text-xs shadow-2xs tracking-tight select-none"
-                      title={`Məhsul: ${activeIdx + 1} / ${effectiveTotal}`}
+                      title={`Məhsul: ${activeProductIdx + 1} / ${effectiveTotal}`}
                     >
-                      <span className="text-emerald-600 font-black">{activeIdx + 1}</span>
+                      <span className="text-emerald-600 font-black">{activeProductIdx + 1}</span>
                       <span className="text-gray-400 font-semibold">/</span>
                       <span>{effectiveTotal}</span>
                     </div>
-                  )}
+                  ) : null}
 
                   <button 
                     onClick={(e) => { e.stopPropagation(); onClose(); }}
@@ -1110,8 +1201,8 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                 {items.length > 1 && (
                   <LeftProductRail
                     items={items}
-                    activeIdx={activeIdx}
-                    onSelect={scrollToIndex}
+                    activeIdx={activeProductIdx}
+                    onSelect={scrollToProductIndex}
                   />
                 )}
 
@@ -1137,7 +1228,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     lastTouchTimeRef.current = Date.now();
                     const target = e.target as HTMLElement;
                     if (target.closest('button') || target.closest('a') || target.closest('[data-upcoming-strip]')) return;
-                    if (!tapStartRef.current) return;
+                    if (!tapStartRef.current || isActiveAdSlide) return;
                     const touch = e.changedTouches[0];
                     const tdx = Math.abs(touch.clientX - tapStartRef.current.x);
                     const tdy = Math.abs(touch.clientY - tapStartRef.current.y);
@@ -1157,7 +1248,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                     }
                   }}
                   onDoubleClick={(e) => {
-                    if (Date.now() - lastTouchTimeRef.current < 600) return;
+                    if (Date.now() - lastTouchTimeRef.current < 600 || isActiveAdSlide) return;
                     const target = e.target as HTMLElement;
                     if (target.closest('button') || target.closest('a') || target.closest('[data-upcoming-strip]')) return;
                     if (activeItem) {
@@ -1166,7 +1257,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                   }}
                   className="relative flex-1 min-w-0 h-full overflow-y-auto snap-y snap-mandatory overscroll-y-none scrollbar-hide touch-pan-y [overflow-anchor:none] bg-white select-none"
                 >
-                  {items.map((item, idx) => {
+                  {deckEntries.map((entry, idx) => {
                     const isNearby = Math.abs(idx - activeIdx) <= 2;
 
                     if (!isNearby) {
@@ -1177,6 +1268,26 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                         />
                       );
                     }
+
+                    if (entry.type === 'ad') {
+                      return (
+                        <div
+                          key={`slide-ad-${idx}-${entry.ad.id}`}
+                          className="relative w-full h-full shrink-0 snap-start snap-always overflow-hidden bg-white"
+                        >
+                          <SwipeAdSlide
+                            ad={entry.ad}
+                            hasPrev={idx > 0}
+                            hasNext={idx < deckEntries.length - 1}
+                            onPrev={() => scrollToIndex(idx - 1)}
+                            onNext={() => scrollToIndex(idx + 1)}
+                            variant="product"
+                          />
+                        </div>
+                      );
+                    }
+
+                    const item = entry.item;
 
                     const p = item.product;
                     const mName = item.marketName;
@@ -1239,7 +1350,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
                                   <ChevronUp className="w-4 h-4 stroke-[2.5]" />
                                 </button>
                               )}
-                              {idx < items.length - 1 && (
+                              {idx < deckEntries.length - 1 && (
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); scrollToIndex(idx + 1); }}
@@ -1510,7 +1621,7 @@ const ProductDetailModalContent: React.FC<ProductDetailModalContentProps> = ({
           return checkIsFavorite({
             product: {
               productName,
-              category: quickOpportunityItem?.category || items[activeIdx]?.product.category || 'Digər',
+              category: quickOpportunityItem?.category || activeItem?.product.category || 'Digər',
               newPrice: '0',
               oldPrice: '---',
               discountPercentage: ''

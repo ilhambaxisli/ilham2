@@ -14,7 +14,7 @@ const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header className="bg-white border-b border-gray-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between py-2.5 sm:py-3">
           
           {/* Logo Section */}

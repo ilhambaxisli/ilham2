@@ -37,6 +37,7 @@ interface ProductCardProps {
   onToggleFavorite?: () => void;
   marketLogoUrl?: string;
   marketName?: string;
+  showMarketTextOnly?: boolean;
   showMarketRibbon?: boolean;
   isRowOnMobile?: boolean;
   isListMode?: boolean;
@@ -458,6 +459,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onToggleFavorite,
   marketLogoUrl,
   marketName,
+  showMarketTextOnly = false,
   showMarketRibbon = false,
   isRowOnMobile = false,
   isListMode = false,
@@ -523,12 +525,22 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
   const imageUrl = (explicitImageUrl && !useFallbackBing) ? explicitImageUrl : autoBingUrl;
   const rawEndDate = extractProductEndDate(product, catalogEndDate);
   const countdownInfo = calculateDaysLeft(rawEndDate);
-  const isExpired = Boolean(countdownInfo && countdownInfo.daysLeft < 0);
+  const isUpcoming = Boolean((product as any)._isUpcoming);
+  const isExpired = Boolean(!isUpcoming && countdownInfo && countdownInfo.daysLeft < 0);
 
   const formattedMarketName = marketName 
     ? marketName.replace(/\s+market$/i, '').trim().toLowerCase().replace(/^\w/, c => c.toUpperCase())
     : '';
 
+  const compactMarketLabel = (() => {
+    const raw = (marketName || '').trim();
+    if (!raw) return '';
+    const withoutMarket = raw.replace(/\s+market$/i, '').trim();
+    if (withoutMarket.length <= 2) return raw;
+    return withoutMarket;
+  })();
+
+  const showTopLeftMarketBadge = Boolean((showMarketTextOnly && compactMarketLabel) || (!showMarketTextOnly && marketLogoUrl));
   const softBadge = getMarketSoftBadgeStyle(marketName || '', accentColor);
 
   return (
@@ -598,7 +610,7 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         {/* Product Image Container */}
         <div className={`
           ${isMiniRow
-            ? 'w-[68px] h-[68px] min-[380px]:w-[74px] min-[380px]:h-[74px] sm:w-[82px] sm:h-[82px] rounded-lg shrink-0'
+            ? 'w-[78px] h-[78px] min-[380px]:w-[84px] min-[380px]:h-[84px] sm:w-[92px] sm:h-[92px] md:w-[96px] md:h-[96px] lg:w-[100px] lg:h-[100px] rounded-lg shrink-0'
             : isPureList
               ? 'w-24 h-24 xs:w-28 xs:h-28 sm:w-28 sm:h-28 rounded-lg shrink-0'
               : isRowOnMobile
@@ -651,8 +663,27 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
             </>
           )}
 
-          {/* Top Left: Market Logo Icon and/or "Ucuzu var" badge, or Discount Percentage */}
-          {(marketLogoUrl || hasCheaperAlternative || product.discountPercentage) && (() => {
+          {/* Crisp SABAH stamp over product image for upcoming tomorrow discounts */}
+          {isUpcoming && !isExpired && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[15]">
+              <span
+                className={`-rotate-6 select-none uppercase font-black tracking-wider text-white bg-emerald-600/92 backdrop-blur-[1px] border-2 border-white/95 rounded-lg shadow-md leading-none ${
+                  isMini
+                    ? 'text-[10px] sm:text-xs px-1.5 py-0.5'
+                    : isListMode
+                      ? 'text-[10px] sm:text-xs px-2 py-0.5'
+                      : isThreeColMobile
+                        ? 'text-[10px] sm:text-xs md:text-sm px-1.5 sm:px-2.5 py-0.5 sm:py-1'
+                        : 'text-xs sm:text-sm px-2.5 py-1'
+                }`}
+              >
+                SABAH
+              </span>
+            </div>
+          )}
+
+          {/* Top Left: Market Badge (text or logo) and/or "Ucuzu var" badge, or Discount Percentage */}
+          {(showTopLeftMarketBadge || hasCheaperAlternative || product.discountPercentage) && (() => {
             const hasHeartOverImage = !isAdmin && Boolean(onToggleFavorite);
             const topLeftMaxWidth = hasHeartOverImage
               ? isListMode
@@ -664,14 +695,21 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
 
             return (
               <div className={`absolute ${isMini ? 'top-1 left-1' : 'top-1 left-1 sm:top-1.5 sm:left-1.5'} z-20 flex flex-row items-start gap-1 pointer-events-none ${topLeftMaxWidth}`}>
-                {marketLogoUrl && (
+                {showMarketTextOnly && compactMarketLabel ? (
+                  <span
+                    className={`${isMini ? 'text-[9px] sm:text-[10px]' : isThreeColMobile ? 'text-[9.5px] sm:text-[11px]' : 'text-[10px] sm:text-[11px]'} font-black text-gray-800 bg-white/90 px-1.5 py-0.5 rounded-md border border-gray-200/80 leading-none tracking-tight shadow-2xs truncate max-w-full`}
+                    title={marketName || compactMarketLabel}
+                  >
+                    {compactMarketLabel}
+                  </span>
+                ) : !showMarketTextOnly && marketLogoUrl ? (
                   <div 
                     className={`${isMini ? 'w-5 h-5 sm:w-6 sm:h-6' : isThreeColMobile ? 'w-5 h-5 sm:w-7 sm:h-7' : 'w-6 h-6 sm:w-7 sm:h-7'} rounded-lg bg-white/95 backdrop-blur-xs p-0.5 shadow-sm border border-gray-100 flex items-center justify-center overflow-hidden shrink-0`}
                     title={marketName || "Market"}
                   >
                     <img src={marketLogoUrl} alt={marketName || "Market"} className="w-full h-full object-contain" />
                   </div>
-                )}
+                ) : null}
 
                 {hasCheaperAlternative && (
                   <div
@@ -689,10 +727,10 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
                   </div>
                 )}
 
-                {!marketLogoUrl && !hasCheaperAlternative && product.discountPercentage && (
+                {!showTopLeftMarketBadge && !hasCheaperAlternative && product.discountPercentage && (
                   <div className={`
                     ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center
-                    ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
+                    ${isThreeColMobile ? 'text-[7.5px] sm:text-[10px] md:text-[11px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[9px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[10px] md:text-[11px] px-1.5 py-0.5'}
                   `}>
                     {product.discountPercentage}
                   </div>
@@ -702,18 +740,18 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
           })()}
 
           {/* Bottom Left: Discount Percentage (when top-left is occupied) + Countdown Badge matching weight badge scale */}
-          {(((marketLogoUrl || hasCheaperAlternative) && product.discountPercentage) || (!hideCountdown && countdownInfo && countdownInfo.daysLeft >= 0)) && (
+          {(((showTopLeftMarketBadge || hasCheaperAlternative) && product.discountPercentage) || (!isUpcoming && !hideCountdown && countdownInfo && countdownInfo.daysLeft >= 0)) && (
             <div className="absolute bottom-1 left-1 sm:bottom-1.5 sm:left-1.5 z-10 flex flex-col items-start gap-1 pointer-events-none">
-              {(marketLogoUrl || hasCheaperAlternative) && product.discountPercentage && (
+              {(showTopLeftMarketBadge || hasCheaperAlternative) && product.discountPercentage && (
                 <div className={`
                   ${isExpired ? 'bg-gray-400' : 'bg-emerald-600'} text-white font-bold rounded shadow-xs flex items-center
-                  ${isThreeColMobile ? 'text-[7.5px] sm:text-[9.5px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[8.5px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5'}
+                  ${isThreeColMobile ? 'text-[7.5px] sm:text-[10px] md:text-[11px] px-1 sm:px-1.5 py-0.5' : isMini ? 'text-[7px] sm:text-[9px] px-1 sm:px-1.5 py-0.5' : 'text-[8.5px] sm:text-[10px] md:text-[11px] px-1.5 py-0.5'}
                 `}>
                   {product.discountPercentage}
                 </div>
               )}
 
-              {!hideCountdown && countdownInfo && countdownInfo.daysLeft >= 0 && (
+              {!isUpcoming && !hideCountdown && countdownInfo && countdownInfo.daysLeft >= 0 && (
                 <div
                   className={`inline-flex items-center gap-1 font-black rounded-md shadow-md tracking-tight leading-none select-none ${
                     countdownInfo.daysLeft <= 1
@@ -721,10 +759,10 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
                       : 'bg-amber-400 text-gray-950'
                   } ${
                     isThreeColMobile
-                      ? 'text-[10.5px] sm:text-sm px-2 sm:px-2.5 py-0.5 sm:py-1'
+                      ? 'text-[10.5px] sm:text-xs md:text-[13px] px-1.5 sm:px-2 py-0.5 sm:py-1'
                       : isMini
                         ? 'text-[10px] sm:text-xs px-2 py-0.5'
-                        : 'text-xs sm:text-sm md:text-base px-2.5 py-1'
+                        : 'text-xs sm:text-[13px] px-2 sm:px-2.5 py-0.5 sm:py-1'
                   }`}
                   title={`Bitmə tarixi: ${countdownInfo.formattedDate} (${countdownInfo.daysLeft === 0 ? 'Bu gün bitir' : `${countdownInfo.daysLeft} gün qaldı`})`}
                 >
@@ -747,7 +785,7 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
           {/* Bottom Right: Quantity/Weight Badge */}
           {quantityBadge && (
             <div 
-              className={`absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 z-10 bg-black text-white font-black ${isMiniRow ? 'text-[8.5px] sm:text-[10px] px-1.5 py-0.5' : isThreeColMobile ? 'text-[10.5px] sm:text-sm px-2 sm:px-2.5 py-0.5 sm:py-1' : isMini ? 'text-[10px] sm:text-xs px-2 py-0.5' : 'text-xs sm:text-sm md:text-base px-2.5 py-1'} rounded-md shadow-md tracking-tight leading-none select-none pointer-events-none`}
+              className={`absolute bottom-1 right-1 sm:bottom-1.5 sm:right-1.5 z-10 bg-black text-white font-black ${isMiniRow ? 'text-[8.5px] sm:text-[10px] px-1.5 py-0.5' : isThreeColMobile ? 'text-[10.5px] sm:text-xs md:text-[13px] px-1.5 sm:px-2 py-0.5 sm:py-1' : isMini ? 'text-[10px] sm:text-xs px-2 py-0.5' : 'text-xs sm:text-[13px] px-2 sm:px-2.5 py-0.5 sm:py-1'} rounded-md shadow-md tracking-tight leading-none select-none pointer-events-none`}
               title={`Miqdar / Çəki: ${quantityBadge}`}
             >
               {quantityBadge}
