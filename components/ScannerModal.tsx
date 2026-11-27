@@ -146,10 +146,16 @@ const ScannerModal: React.FC<ScannerModalProps> = ({
             'image/jpeg', 
             selectedMarket,
             (newProducts) => {
+              const batchNow = Date.now();
               // Merge products while avoiding exact duplicates on the same page stream
-              newProducts.forEach(np => {
+              newProducts.forEach((np, npIdx) => {
                 const exists = accumulatedProducts.some(ap => ap.productName === np.productName && ap.newPrice === np.newPrice);
-                if (!exists) accumulatedProducts.push(np);
+                if (!exists) {
+                  accumulatedProducts.push({
+                    ...np,
+                    addedAt: typeof np.addedAt === 'number' ? np.addedAt : (batchNow - npIdx),
+                  });
+                }
               });
               onStreamUpdate([...accumulatedProducts], targetCatalogId, targetCatalogName, startDate, endDate);
             }
@@ -164,7 +170,12 @@ const ScannerModal: React.FC<ScannerModalProps> = ({
           mimeType, 
           selectedMarket,
           (products) => {
-            onStreamUpdate(products, targetCatalogId, targetCatalogName, startDate, endDate);
+            const batchNow = Date.now();
+            const stamped = products.map((p, idx) => ({
+              ...p,
+              addedAt: typeof p.addedAt === 'number' ? p.addedAt : (batchNow - idx),
+            }));
+            onStreamUpdate(stamped, targetCatalogId, targetCatalogName, startDate, endDate);
           }
         );
       }

@@ -104,7 +104,7 @@ const SearchMarketResultCard: React.FC<SearchMarketResultCardProps> = ({
       {isCompactNameHeader ? (
         <div data-search-compact-header="true" className="flex items-center gap-3 pb-3.5 sm:pb-4 select-none">
           <div className="h-px flex-1 bg-gray-200/90" aria-hidden="true" />
-          <span className="text-base sm:text-lg md:text-xl font-black text-black tracking-tight text-center">
+          <span className="text-xl sm:text-2xl md:text-[26px] font-black text-black tracking-tight text-center">
             {market.name}
           </span>
           <div className="h-px flex-1 bg-gray-200/90" aria-hidden="true" />

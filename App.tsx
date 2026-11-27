@@ -267,18 +267,41 @@ interface ViewState {
   showFavorites: boolean;
 }
 
-const getProductExpirySortWeight = (product: DiscountProduct, catalogEndDate?: string): number => {
-  const cd = calculateDaysLeft(extractProductEndDate(product, catalogEndDate));
-  if (!cd) return 1_000_000;
-  if (cd.daysLeft < 0) return 2_000_000 + Math.abs(cd.daysLeft);
-  return cd.daysLeft;
+const getProductAddedTimestamp = (product: DiscountProduct): number => {
+  const raw =
+    product.addedAt ??
+    (product as any).createdAt ??
+    (product as any).created_at;
+  if (typeof raw === 'number' && !isNaN(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    const parsed = Number(raw);
+    if (!isNaN(parsed)) return parsed;
+    const ms = Date.parse(raw);
+    if (!isNaN(ms)) return ms;
+  }
+  return 0;
 };
 
-const sortProductsBySoonestExpiry = <T extends DiscountProduct>(products: T[], catalogEndDate?: string): T[] => {
+const getProductExpirySortWeight = (product: DiscountProduct, catalogEndDate?: string): number => {
+  const cd = calculateDaysLeft(extractProductEndDate(product, catalogEndDate));
+  if (cd && cd.daysLeft < 0) return 1_000_000 + Math.abs(cd.daysLeft);
+  return 0;
+};
+
+const sortProductsNewestFirstWithExpiredLast = <T extends DiscountProduct>(products: T[], catalogEndDate?: string): T[] => {
   if (products.length <= 1) return products;
   return products
-    .map((item, idx) => ({ item, idx, weight: getProductExpirySortWeight(item, catalogEndDate) }))
-    .sort((a, b) => (a.weight !== b.weight ? a.weight - b.weight : a.idx - b.idx))
+    .map((item, idx) => ({
+      item,
+      idx,
+      weight: getProductExpirySortWeight(item, catalogEndDate),
+      addedAt: getProductAddedTimestamp(item),
+    }))
+    .sort((a, b) => {
+      if (a.weight !== b.weight) return a.weight - b.weight;
+      if (a.weight === 0 && a.addedAt !== b.addedAt) return b.addedAt - a.addedAt;
+      return a.idx - b.idx;
+    })
     .map((entry) => entry.item);
 };
 
@@ -1108,6 +1131,8 @@ const App: React.FC = () => {
         if (matchingCampaigns.length === 0) return market;
 
         const incomingProducts: DiscountProduct[] = [];
+        const promoteBaseMs = Date.now();
+        let promoteSeq = 0;
         matchingCampaigns.forEach((camp) => {
           (camp.products || []).forEach((prod) => {
             const resolvedExp = prod.expiryDate || prod.bitis || camp.endDate;
@@ -1115,7 +1140,9 @@ const App: React.FC = () => {
               ...prod,
               expiryDate: resolvedExp || undefined,
               bitis: resolvedExp || undefined,
+              addedAt: typeof prod.addedAt === 'number' ? prod.addedAt : (promoteBaseMs - promoteSeq),
             });
+            promoteSeq += 1;
           });
         });
         if (incomingProducts.length === 0) return market;
@@ -1521,11 +1548,16 @@ const App: React.FC = () => {
           normName: normalizeTextForSearch(entry.product.productName || ''),
           priceNum: parsePriceNumber(entry.product.newPrice),
           weight: (entry.product as any)._isUpcoming
-            ? 90000 + idx
+            ? 500_000 + idx
             : getProductExpirySortWeight(entry.product, entry.catEndDate),
+          addedAt: getProductAddedTimestamp(entry.product),
           idx,
         }))
-        .sort((a, b) => (a.weight !== b.weight ? a.weight - b.weight : a.idx - b.idx));
+        .sort((a, b) => {
+          if (a.weight !== b.weight) return a.weight - b.weight;
+          if (a.weight === 0 && a.addedAt !== b.addedAt) return b.addedAt - a.addedAt;
+          return a.idx - b.idx;
+        });
 
       return { market, indexed };
     });
@@ -1700,7 +1732,10 @@ const App: React.FC = () => {
       if (newCatalogs.length === 0) {
         const products = [...(m.products || [])];
         if (productToEdit.index === -1) {
-          products.unshift(updatedProduct);
+          products.unshift({
+            ...updatedProduct,
+            addedAt: typeof updatedProduct.addedAt === 'number' ? updatedProduct.addedAt : Date.now(),
+          });
         } else if (products[productToEdit.index]) {
           products[productToEdit.index] = updatedProduct;
         }
@@ -1712,7 +1747,10 @@ const App: React.FC = () => {
       const targetIdx = catIndex >= 0 ? catIndex : 0;
       const products = [...(newCatalogs[targetIdx].products || [])];
       if (productToEdit.index === -1) {
-        products.unshift(updatedProduct);
+        products.unshift({
+          ...updatedProduct,
+          addedAt: typeof updatedProduct.addedAt === 'number' ? updatedProduct.addedAt : Date.now(),
+        });
       } else if (products[productToEdit.index]) {
         products[productToEdit.index] = updatedProduct;
       }
@@ -2729,18 +2767,39 @@ const App: React.FC = () => {
     [activeMarketNormalFilteredProducts, activeMarketFilteredUpcomingProducts]
   );
 
-  const activeMarketCategoriesWithCounts = useMemo(() => {
-    const map = new Map<string, number>();
+  const orderedNormalCategoryGroups = useMemo(() => {
+    const catEndDate = activeMarketCatalog?.endDate;
+    const catOrderMap = new Map<string, DiscountProduct[]>();
     activeMarketNormalFilteredProducts.forEach(p => {
       const cat = (p.category || 'Digər').trim() || 'Digər';
-      map.set(cat, (map.get(cat) || 0) + 1);
+      if (!catOrderMap.has(cat)) catOrderMap.set(cat, []);
+      catOrderMap.get(cat)!.push(p);
     });
-    const list = Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+
+    return Array.from(catOrderMap.entries())
+      .map(([name, prods], idx) => {
+        const sortedProds = sortProductsNewestFirstWithExpiredLast(prods, catEndDate);
+        const hasActive = sortedProds.some(p => getProductExpirySortWeight(p, catEndDate) === 0);
+        const maxAddedAt = sortedProds.reduce((max, p) => {
+          if (getProductExpirySortWeight(p, catEndDate) > 0) return max;
+          return Math.max(max, getProductAddedTimestamp(p));
+        }, 0);
+        return { name, products: sortedProds, hasActive, maxAddedAt, idx };
+      })
+      .sort((a, b) => {
+        if (a.hasActive !== b.hasActive) return a.hasActive ? -1 : 1;
+        if (a.hasActive && a.maxAddedAt !== b.maxAddedAt) return b.maxAddedAt - a.maxAddedAt;
+        return a.idx - b.idx;
+      });
+  }, [activeMarketNormalFilteredProducts, activeMarketCatalog?.endDate]);
+
+  const activeMarketCategoriesWithCounts = useMemo(() => {
+    const list = orderedNormalCategoryGroups.map(g => ({ name: g.name, count: g.products.length }));
     if (activeMarketFilteredUpcomingProducts.length > 0) {
       list.push({ name: UPCOMING_CATEGORY_NAME, count: activeMarketFilteredUpcomingProducts.length });
     }
     return list;
-  }, [activeMarketNormalFilteredProducts, activeMarketFilteredUpcomingProducts]);
+  }, [orderedNormalCategoryGroups, activeMarketFilteredUpcomingProducts]);
 
   const activeMarketHasCategories =
     activeMarketCategoriesWithCounts.length > 0 &&
@@ -2758,27 +2817,16 @@ const App: React.FC = () => {
     const hasNormalCategories =
       normalCatSet.size > 0 && !(normalCatSet.size === 1 && normalCatSet.has('Digər'));
 
-    let orderedNormal: DiscountProduct[];
-    if (!hasNormalCategories) {
-      orderedNormal = sortProductsBySoonestExpiry(activeMarketNormalFilteredProducts, catEndDate);
-    } else {
-      const catOrderMap = new Map<string, DiscountProduct[]>();
-      activeMarketNormalFilteredProducts.forEach(p => {
-        const cat = (p.category || 'Digər').trim() || 'Digər';
-        if (!catOrderMap.has(cat)) catOrderMap.set(cat, []);
-        catOrderMap.get(cat)!.push(p);
-      });
-      orderedNormal = Array.from(catOrderMap.values())
-        .map(prods => sortProductsBySoonestExpiry(prods, catEndDate))
-        .flat();
-    }
+    const orderedNormal: DiscountProduct[] = !hasNormalCategories
+      ? sortProductsNewestFirstWithExpiredLast(activeMarketNormalFilteredProducts, catEndDate)
+      : orderedNormalCategoryGroups.flatMap(g => g.products);
 
     if (activeMarketFilteredUpcomingProducts.length === 0) {
       return orderedNormal;
     }
-    const orderedUpcoming = sortProductsBySoonestExpiry(activeMarketFilteredUpcomingProducts, catEndDate);
+    const orderedUpcoming = sortProductsNewestFirstWithExpiredLast(activeMarketFilteredUpcomingProducts, catEndDate);
     return [...orderedNormal, ...orderedUpcoming];
-  }, [activeMarketNormalFilteredProducts, activeMarketFilteredUpcomingProducts, activeMarketCatalog?.endDate]);
+  }, [activeMarketNormalFilteredProducts, activeMarketFilteredUpcomingProducts, orderedNormalCategoryGroups, activeMarketCatalog?.endDate]);
 
   const scrollToActiveCategorySection = useCallback((categoryName: string) => {
     if (!activeMarketObj) return;

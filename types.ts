@@ -23,6 +23,7 @@ export interface DiscountProduct {
   expiryDate?: string; // Product-specific expiration date
   bitis?: string; // Supabase product end date field
   endDate?: string;
+  addedAt?: number;
   [key: string]: any;
 }
 

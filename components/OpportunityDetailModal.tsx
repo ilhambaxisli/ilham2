@@ -674,7 +674,6 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                       {comparisonSides.map((side) => {
                         const isCheapest = side.kind === 'cheapest';
                         const rep = side.representative;
-                        const isMultiMarket = side.variants.length > 1;
 
                         // Pick earliest active endDate from variants in this group
                         let bestCountdown: ReturnType<typeof calculateDaysLeft> = null;
@@ -699,61 +698,35 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
 
                         const cardBody = (
                           <>
-                            {/* Top Market Header: Logo + name for 1 market, or logos-only row when multiple markets share the price */}
+                            {/* Top Market Header: Always crisp market logo(s) only */}
                             <div
                               className={`px-2 sm:px-3 py-2 sm:py-2.5 min-h-[44px] sm:min-h-[50px] flex items-center shrink-0 border-b ${
                                 isCheapest ? 'border-emerald-200/70 bg-emerald-50/70' : 'border-gray-100 bg-gray-50/80'
                               }`}
                             >
-                              {!isMultiMarket ? (
-                                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                              <div className="w-full flex flex-wrap items-center gap-1.5 sm:gap-2">
+                                {side.variants.map((v) => (
                                   <div
-                                    className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white flex items-center justify-center overflow-hidden p-0.5 shrink-0 border ${
-                                      isCheapest ? 'border-emerald-500' : 'border-gray-200'
+                                    key={v.marketId}
+                                    title={v.marketName}
+                                    aria-label={v.marketName}
+                                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center overflow-hidden p-1 shrink-0 border shadow-2xs ${
+                                      isCheapest ? 'border-emerald-500/85' : 'border-gray-200'
                                     }`}
                                   >
-                                    {rep.logoUrl ? (
-                                      <img src={rep.logoUrl} alt={rep.marketName} className="w-full h-full object-contain" />
+                                    {v.logoUrl ? (
+                                      <img src={v.logoUrl} alt={v.marketName} className="w-full h-full object-contain" />
                                     ) : (
-                                      <span className={`font-black text-[9.5px] sm:text-[11px] text-${rep.themeColor}-700`}>
-                                        {rep.logoPlaceholder}
+                                      <span className={`font-black text-[9.5px] sm:text-[11px] text-${v.themeColor}-700`}>
+                                        {v.logoPlaceholder}
                                       </span>
                                     )}
                                   </div>
-                                  <span
-                                    className={`text-[11px] sm:text-xs font-extrabold leading-tight ${
-                                      isCheapest ? 'text-emerald-950' : 'text-gray-800'
-                                    }`}
-                                    title={rep.marketName}
-                                  >
-                                    {rep.marketName}
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="w-full flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                  {side.variants.map((v) => (
-                                    <div
-                                      key={v.marketId}
-                                      title={v.marketName}
-                                      aria-label={v.marketName}
-                                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center overflow-hidden p-1 shrink-0 border shadow-2xs ${
-                                        isCheapest ? 'border-emerald-500/85' : 'border-gray-200'
-                                      }`}
-                                    >
-                                      {v.logoUrl ? (
-                                        <img src={v.logoUrl} alt={v.marketName} className="w-full h-full object-contain" />
-                                      ) : (
-                                        <span className={`font-black text-[9.5px] sm:text-[11px] text-${v.themeColor}-700`}>
-                                          {v.logoPlaceholder}
-                                        </span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                                ))}
+                              </div>
                             </div>
 
-                            {/* Center Product Visual + Role Label + End Date + Quantity */}
+                            {/* Center Product Visual + Role Label + Unboxed Market Name(s) + End Date + Quantity */}
                             <div className="flex-1 min-h-0 relative flex items-center justify-center p-2.5 sm:p-3.5 bg-white/85 overflow-hidden">
                               <img
                                 src={imgUrl}
@@ -769,7 +742,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                                 className="w-full h-full object-contain mix-blend-multiply pointer-events-none select-none group-hover:scale-105 transition-transform duration-300"
                               />
 
-                              {/* Top-Left on Image: ƏN UCUZ vs ƏN BAHALI + vertical list of tied market names */}
+                              {/* Top-Left on Image: ƏN UCUZ vs ƏN BAHALI + free unboxed market name(s) */}
                               <div className="absolute top-1.5 left-1.5 z-20 flex flex-col items-start gap-1 pointer-events-none max-w-[calc(100%-12px)]">
                                 {isCheapest ? (
                                   <span className="px-1.5 sm:px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[9px] sm:text-[10.5px] font-black tracking-tight shadow-sm leading-none">
@@ -781,24 +754,18 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                                   </span>
                                 )}
 
-                                {isMultiMarket && (
-                                  <div
-                                    className={`flex flex-col items-start gap-0.5 px-1.5 py-1 rounded-md backdrop-blur-[2px] shadow-2xs ${
-                                      isCheapest
-                                        ? 'bg-white/92 text-emerald-950 border border-emerald-200/80'
-                                        : 'bg-white/92 text-gray-900 border border-gray-200/85'
-                                    }`}
-                                  >
-                                    {side.variants.map((v) => (
-                                      <span
-                                        key={v.marketId}
-                                        className="text-[9.5px] sm:text-[11px] font-extrabold leading-tight"
-                                      >
-                                        {getShortMarketName(v.marketName)}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
+                                <div className="flex flex-col items-start gap-0.5 pl-0.5">
+                                  {side.variants.map((v) => (
+                                    <span
+                                      key={v.marketId}
+                                      className={`text-[10.5px] sm:text-xs font-extrabold leading-tight [text-shadow:0_1px_2px_rgba(255,255,255,0.95),0_0_6px_rgba(255,255,255,0.9)] ${
+                                        isCheapest ? 'text-emerald-950' : 'text-gray-900'
+                                      }`}
+                                    >
+                                      {v.marketName}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
 
                               {/* Bottom-Left on Image: Expiration / End Date Countdown */}
