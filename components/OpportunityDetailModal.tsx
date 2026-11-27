@@ -578,7 +578,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                   if (target.closest('button') || target.closest('a') || !cheapest) return;
                   triggerHeartBurst(item, cheapest, idx);
                 }}
-                className="relative w-full max-w-[720px] bg-white shadow-2xl rounded-2xl sm:rounded-3xl flex flex-col overflow-hidden max-h-[90dvh] z-10 border border-gray-200/80"
+                className="relative w-full max-w-[720px] bg-white shadow-2xl rounded-2xl sm:rounded-3xl flex flex-col overflow-hidden max-h-[90dvh] sm:max-h-[94dvh] z-10 border border-gray-200/80"
               >
                 {/* Top Drag Pill */}
                 <div className="w-full flex items-center justify-center pt-2 pb-0.5 bg-white shrink-0">
@@ -639,9 +639,9 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                 </div>
 
                 {/* Top Hero Savings Highlight Strip */}
-                <div className="px-3 sm:px-6 pt-2.5 sm:pt-3.5 pb-2 sm:pb-3 shrink-0">
+                <div className="px-3 sm:px-6 pt-2.5 sm:pt-3 pb-2 sm:pb-3 shrink-0">
                   <div
-                    className="px-3.5 py-2.5 sm:px-5 sm:py-3.5 rounded-xl sm:rounded-2xl flex items-center justify-between gap-2.5 shadow-md"
+                    className="px-3.5 py-2.5 sm:px-5 sm:py-3 rounded-xl sm:rounded-2xl flex items-center justify-between gap-2.5 shadow-md"
                     style={{ background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)' }}
                   >
                     <div className="min-w-0">
@@ -664,8 +664,8 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                 </div>
 
                 {/* 2-Card Comparison: Cheapest (left) vs Most Expensive (right), grouping same-price markets on one card */}
-                <div className="flex-1 min-h-0 px-3 sm:px-6 pb-2 sm:pb-3 flex flex-col justify-center relative overflow-hidden">
-                  <div className="relative flex items-center" data-opp-cards-wrap="">
+                <div className="flex-1 min-h-0 px-3 sm:px-6 pt-0.5 pb-2 sm:pb-3 flex flex-col relative overflow-y-auto scrollbar-hide">
+                  <div className="relative flex items-center w-full my-auto" data-opp-cards-wrap="">
                     <div
                       className={`w-full grid gap-2.5 sm:gap-4 ${
                         comparisonSides.length <= 1 ? 'grid-cols-1 max-w-[340px] mx-auto' : 'grid-cols-2'
@@ -688,7 +688,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                         // Find old price if available on any variant in this side
                         const rawOld = side.variants.find((v) => v.oldPrice && v.oldPrice !== '---')?.oldPrice?.trim() || '';
 
-                        const cardClass = `h-[282px] min-[400px]:h-[304px] sm:h-[346px] rounded-2xl sm:rounded-[24px] flex flex-col overflow-hidden transition-all text-left group relative ${
+                        const cardClass = `h-[282px] min-[400px]:h-[304px] sm:h-[clamp(240px,46dvh,346px)] rounded-2xl sm:rounded-[24px] flex flex-col overflow-hidden transition-all text-left group relative ${
                           onMarketClick ? 'cursor-pointer active:scale-[0.985]' : 'cursor-default'
                         } ${
                           isCheapest
@@ -867,7 +867,7 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                 </div>
 
                 {/* Bottom Product Title (left-aligned) + Frameless Heart Icon (right) in unified gray frame */}
-                <div className="px-3 sm:px-6 pt-1 pb-2.5 sm:pb-4 shrink-0">
+                <div className="px-3 sm:px-6 pt-1 pb-2.5 sm:pb-3.5 shrink-0">
                   <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 rounded-xl sm:rounded-2xl bg-gray-100/90 border border-gray-200/90 flex items-center justify-between gap-3">
                     <h2
                       style={{ WebkitUserSelect: 'text', WebkitTouchCallout: 'default' }}
