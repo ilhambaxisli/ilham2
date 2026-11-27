@@ -243,7 +243,7 @@ const getMarketButtonStyle = (market: MarketData, index: number, isSelected: boo
   return isSelected ? matched.selected : matched.unselected;
 };
 
-// Normalize Azerbaijani & Turkish letters for fuzzy search: cips == Çips, yag == yağ, e == ə, u == ü, s == ş, etc.
+// Normalize Azerbaijani & Turkish letters & digraphs for fuzzy search: cips == Çips == chips, ch == c, sh == s, yag == yağ, e == ə, u == ü, s == ş, etc.
 const normalizeTextForSearch = (text: string): string => {
   if (!text) return '';
   return text
@@ -256,7 +256,9 @@ const normalizeTextForSearch = (text: string): string => {
     .replace(/ü/g, 'u')
     .replace(/ğ/g, 'g')
     .replace(/ş/g, 's')
-    .replace(/ç/g, 'c');
+    .replace(/ç/g, 'c')
+    .replace(/ch/g, 'c')
+    .replace(/sh/g, 's');
 };
 
 
@@ -1249,8 +1251,34 @@ const App: React.FC = () => {
       }
 
       if (validProducts.length > 0) {
-        // Deterministically pick the first valid product with an image (or fallback to first valid product)
-        const candidate = validProducts.find(p => !!(p.imageUrl || p.customImageUrl)) || validProducts[0];
+        // Pick the active product with the highest discount percentage (tiebreak: higher manat diff, then has image)
+        let candidate = validProducts[0];
+        let bestScore = getProductDiscountSortScore(candidate);
+        let bestHasImg = Boolean(candidate.imageUrl || candidate.customImageUrl);
+
+        for (let i = 1; i < validProducts.length; i++) {
+          const prod = validProducts[i];
+          const score = getProductDiscountSortScore(prod);
+          const hasImg = Boolean(prod.imageUrl || prod.customImageUrl);
+          if (Math.abs(score.pct - bestScore.pct) > 0.01) {
+            if (score.pct > bestScore.pct) {
+              candidate = prod;
+              bestScore = score;
+              bestHasImg = hasImg;
+            }
+          } else if (Math.abs(score.diff - bestScore.diff) > 0.01) {
+            if (score.diff > bestScore.diff) {
+              candidate = prod;
+              bestScore = score;
+              bestHasImg = hasImg;
+            }
+          } else if (!bestHasImg && hasImg) {
+            candidate = prod;
+            bestScore = score;
+            bestHasImg = hasImg;
+          }
+        }
+
         list.push({ product: candidate, market: m });
         usedMarkets.add(m.id);
       }
@@ -1548,13 +1576,20 @@ const App: React.FC = () => {
           normName: normalizeTextForSearch(entry.product.productName || ''),
           priceNum: parsePriceNumber(entry.product.newPrice),
           weight: (entry.product as any)._isUpcoming
-            ? 500_000 + idx
+            ? 500_000
             : getProductExpirySortWeight(entry.product, entry.catEndDate),
+          discountScore: getProductDiscountSortScore(entry.product),
           addedAt: getProductAddedTimestamp(entry.product),
           idx,
         }))
         .sort((a, b) => {
           if (a.weight !== b.weight) return a.weight - b.weight;
+          if (Math.abs(b.discountScore.pct - a.discountScore.pct) > 0.01) {
+            return b.discountScore.pct - a.discountScore.pct;
+          }
+          if (Math.abs(b.discountScore.diff - a.discountScore.diff) > 0.01) {
+            return b.discountScore.diff - a.discountScore.diff;
+          }
           if (a.weight === 0 && a.addedAt !== b.addedAt) return b.addedAt - a.addedAt;
           return a.idx - b.idx;
         });
@@ -2767,6 +2802,35 @@ const App: React.FC = () => {
     [activeMarketNormalFilteredProducts, activeMarketFilteredUpcomingProducts]
   );
 
+  const isDetailSearchActive = debouncedSearchQuery.trim().length > 0;
+
+  const sortProductsByDiscountWithExpiredLast = useCallback(
+    <T extends DiscountProduct>(products: T[], catalogEndDate?: string): T[] => {
+      if (products.length <= 1) return products;
+      return products
+        .map((item, idx) => ({
+          item,
+          idx,
+          weight: getProductExpirySortWeight(item, catalogEndDate),
+          discountScore: getProductDiscountSortScore(item),
+          addedAt: getProductAddedTimestamp(item),
+        }))
+        .sort((a, b) => {
+          if (a.weight !== b.weight) return a.weight - b.weight;
+          if (Math.abs(b.discountScore.pct - a.discountScore.pct) > 0.01) {
+            return b.discountScore.pct - a.discountScore.pct;
+          }
+          if (Math.abs(b.discountScore.diff - a.discountScore.diff) > 0.01) {
+            return b.discountScore.diff - a.discountScore.diff;
+          }
+          if (a.weight === 0 && a.addedAt !== b.addedAt) return b.addedAt - a.addedAt;
+          return a.idx - b.idx;
+        })
+        .map(entry => entry.item);
+    },
+    []
+  );
+
   const orderedNormalCategoryGroups = useMemo(() => {
     const catEndDate = activeMarketCatalog?.endDate;
     const catOrderMap = new Map<string, DiscountProduct[]>();
@@ -2778,7 +2842,9 @@ const App: React.FC = () => {
 
     return Array.from(catOrderMap.entries())
       .map(([name, prods], idx) => {
-        const sortedProds = sortProductsNewestFirstWithExpiredLast(prods, catEndDate);
+        const sortedProds = isDetailSearchActive
+          ? sortProductsByDiscountWithExpiredLast(prods, catEndDate)
+          : sortProductsNewestFirstWithExpiredLast(prods, catEndDate);
         const hasActive = sortedProds.some(p => getProductExpirySortWeight(p, catEndDate) === 0);
         const maxAddedAt = sortedProds.reduce((max, p) => {
           if (getProductExpirySortWeight(p, catEndDate) > 0) return max;
@@ -2791,7 +2857,7 @@ const App: React.FC = () => {
         if (a.hasActive && a.maxAddedAt !== b.maxAddedAt) return b.maxAddedAt - a.maxAddedAt;
         return a.idx - b.idx;
       });
-  }, [activeMarketNormalFilteredProducts, activeMarketCatalog?.endDate]);
+  }, [activeMarketNormalFilteredProducts, activeMarketCatalog?.endDate, isDetailSearchActive, sortProductsByDiscountWithExpiredLast]);
 
   const activeMarketCategoriesWithCounts = useMemo(() => {
     const list = orderedNormalCategoryGroups.map(g => ({ name: g.name, count: g.products.length }));
@@ -2818,15 +2884,19 @@ const App: React.FC = () => {
       normalCatSet.size > 0 && !(normalCatSet.size === 1 && normalCatSet.has('Digər'));
 
     const orderedNormal: DiscountProduct[] = !hasNormalCategories
-      ? sortProductsNewestFirstWithExpiredLast(activeMarketNormalFilteredProducts, catEndDate)
+      ? (isDetailSearchActive
+          ? sortProductsByDiscountWithExpiredLast(activeMarketNormalFilteredProducts, catEndDate)
+          : sortProductsNewestFirstWithExpiredLast(activeMarketNormalFilteredProducts, catEndDate))
       : orderedNormalCategoryGroups.flatMap(g => g.products);
 
     if (activeMarketFilteredUpcomingProducts.length === 0) {
       return orderedNormal;
     }
-    const orderedUpcoming = sortProductsNewestFirstWithExpiredLast(activeMarketFilteredUpcomingProducts, catEndDate);
+    const orderedUpcoming = isDetailSearchActive
+      ? sortProductsByDiscountWithExpiredLast(activeMarketFilteredUpcomingProducts, catEndDate)
+      : sortProductsNewestFirstWithExpiredLast(activeMarketFilteredUpcomingProducts, catEndDate);
     return [...orderedNormal, ...orderedUpcoming];
-  }, [activeMarketNormalFilteredProducts, activeMarketFilteredUpcomingProducts, orderedNormalCategoryGroups, activeMarketCatalog?.endDate]);
+  }, [activeMarketNormalFilteredProducts, activeMarketFilteredUpcomingProducts, orderedNormalCategoryGroups, activeMarketCatalog?.endDate, isDetailSearchActive, sortProductsByDiscountWithExpiredLast]);
 
   const scrollToActiveCategorySection = useCallback((categoryName: string) => {
     if (!activeMarketObj) return;
@@ -3613,32 +3683,33 @@ const App: React.FC = () => {
                                           data-search-chip-id={m.id}
                                           type="button"
                                           onClick={() => scrollToSearchMarketIndex(idx)}
+                                          aria-label={`${m.name} (${m.filteredProducts.length} məhsul)`}
                                           className={
                                             isActiveChip
-                                              ? 'relative z-20 inline-flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-t-xl border bg-white text-gray-900 border-gray-200/90 border-b-white shrink-0 cursor-pointer select-none transition-colors duration-150'
-                                              : 'relative z-10 inline-flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-t-xl border border-transparent bg-white/60 hover:bg-white/95 text-gray-600 hover:text-gray-900 shrink-0 cursor-pointer select-none transition-colors duration-150'
+                                              ? 'relative z-20 inline-flex items-center gap-2 sm:gap-2.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-t-xl border bg-white text-gray-900 border-gray-200/90 border-b-white shrink-0 cursor-pointer select-none transition-colors duration-150'
+                                              : 'relative z-10 inline-flex items-center justify-center px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-t-xl border border-transparent bg-white/60 hover:bg-white/95 text-gray-600 hover:text-gray-900 shrink-0 cursor-pointer select-none transition-colors duration-150'
                                           }
                                           title={`${m.name} (${m.filteredProducts.length} məhsul)`}
                                         >
-                                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white border border-gray-200/90 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
+                                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white border border-gray-200/90 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs">
                                             {m.logoUrl ? (
                                               <img src={m.logoUrl} alt={m.name} className="w-full h-full object-contain p-0.5" />
                                             ) : (
-                                              <span className={`text-${m.themeColor || 'green'}-700 font-black text-xs sm:text-sm`}>
+                                              <span className={`text-${m.themeColor || 'green'}-700 font-black text-sm sm:text-base`}>
                                                 {m.logoPlaceholder}
                                               </span>
                                             )}
                                           </div>
-                                          <span className={`text-sm sm:text-base font-extrabold tracking-tight ${isActiveChip ? 'text-gray-900' : 'text-gray-700'}`}>
-                                            {shortName}
-                                          </span>
-                                          <span className={`inline-flex items-center justify-center min-w-[22px] px-1.5 sm:px-2 py-0.5 rounded-full text-[11px] sm:text-xs font-extrabold leading-none ${
-                                            isActiveChip
-                                              ? 'bg-emerald-600 text-white'
-                                              : 'bg-gray-200/80 text-gray-600'
-                                          }`}>
-                                            {m.filteredProducts.length}
-                                          </span>
+                                          {isActiveChip && (
+                                            <>
+                                              <span className="text-sm sm:text-base font-extrabold tracking-tight text-gray-900">
+                                                {shortName}
+                                              </span>
+                                              <span className="inline-flex items-center justify-center min-w-[22px] px-1.5 sm:px-2 py-0.5 rounded-full text-[11px] sm:text-xs font-extrabold leading-none bg-emerald-600 text-white">
+                                                {m.filteredProducts.length}
+                                              </span>
+                                            </>
+                                          )}
                                         </button>
                                       );
                                     })}
@@ -4287,7 +4358,7 @@ const App: React.FC = () => {
                             Marketlər
                           </span>
                           <span
-                            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-200/90 px-2.5 sm:px-3 py-1 rounded-full shadow-2xs tabular-nums select-none"
+                            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-emerald-700 tabular-nums select-none"
                             style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
                           >
                             Cəmi {displayedHomeProductsCount} məhsul
@@ -4341,14 +4412,12 @@ const App: React.FC = () => {
                                     >
                                       {market.name}
                                     </h3>
-                                    {/* Green product count for active markets, gray for expired + upcoming +N badge */}
-                                    <div className="inline-flex items-center gap-1 shrink-0">
+                                    {/* Frameless product count for active/expired markets + upcoming +N link */}
+                                    <div className="inline-flex items-center gap-1.5 shrink-0">
                                       <span
                                         style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
-                                        className={`inline-flex items-center text-xs sm:text-sm font-black px-2 sm:px-2.5 py-0.5 rounded-full shrink-0 shadow-2xs border select-none tabular-nums ${
-                                          isMarketExpired
-                                            ? 'text-gray-500 bg-gray-100 border-gray-200'
-                                            : 'text-emerald-700 bg-emerald-50 border-emerald-200/90'
+                                        className={`inline-flex items-center text-[15px] sm:text-base md:text-lg font-black shrink-0 select-none tabular-nums leading-none ${
+                                          isMarketExpired ? 'text-gray-400' : 'text-emerald-700'
                                         }`}
                                       >
                                         {catalogProductsCount}
@@ -4363,7 +4432,7 @@ const App: React.FC = () => {
                                           style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
                                           title={`${market.name} · Sabahkı endirimlərə keç (${upcomingCount} məhsul)`}
                                           aria-label={`${market.name} sabahkı endirimlərə keç (${upcomingCount} məhsul)`}
-                                          className="inline-flex items-center text-xs sm:text-sm font-black px-2 sm:px-2.5 py-0.5 rounded-full shrink-0 shadow-2xs bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700/80 select-none tabular-nums cursor-pointer active:scale-95 transition-all"
+                                          className="inline-flex items-center text-[15px] sm:text-base md:text-lg font-black shrink-0 text-emerald-600 hover:text-emerald-800 hover:underline select-none tabular-nums leading-none cursor-pointer active:scale-95 transition-all"
                                         >
                                           +{upcomingCount}
                                         </button>

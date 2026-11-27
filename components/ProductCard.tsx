@@ -110,35 +110,39 @@ const fitWholeWordsToLines = (text: string, el: HTMLElement, maxLines = 2): stri
   return words.slice(0, Math.max(1, fittedCount)).join(' ');
 };
 
-const WholeWordsTitle: React.FC<{ text: string; className?: string }> = ({ text, className = '' }) => {
+const WholeWordsTitle: React.FC<{ text: string; className?: string; maxLines?: number }> = ({
+  text,
+  className = '',
+  maxLines = 2,
+}) => {
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const [displayText, setDisplayText] = useState<string>(text);
 
   useLayoutEffect(() => {
     const el = headingRef.current;
     if (!el) return;
-    const next = fitWholeWordsToLines(text, el, 2);
+    const next = fitWholeWordsToLines(text, el, maxLines);
     setDisplayText(prev => (prev === next ? prev : next));
-  }, [text, className]);
+  }, [text, className, maxLines]);
 
   useLayoutEffect(() => {
     const el = headingRef.current;
     if (!el) return;
     const cs = window.getComputedStyle(el);
     const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.28);
-    const maxAllowedH = lh * 2 + 2;
+    const maxAllowedH = Math.ceil(lh * maxLines + Math.max(4, lh * 0.35));
     const currentWords = displayText.trim().split(/\s+/).filter(Boolean);
     if (el.scrollHeight > maxAllowedH && currentWords.length > 1) {
       setDisplayText(currentWords.slice(0, currentWords.length - 1).join(' '));
     }
-  }, [displayText]);
+  }, [displayText, maxLines]);
 
   useEffect(() => {
     const el = headingRef.current;
     if (!el) return;
     const recompute = () => {
       if (!headingRef.current) return;
-      const next = fitWholeWordsToLines(text, headingRef.current, 2);
+      const next = fitWholeWordsToLines(text, headingRef.current, maxLines);
       setDisplayText(prev => (prev === next ? prev : next));
     };
     const ro = new ResizeObserver(recompute);
@@ -147,7 +151,7 @@ const WholeWordsTitle: React.FC<{ text: string; className?: string }> = ({ text,
       document.fonts.ready.then(recompute).catch(() => {});
     }
     return () => ro.disconnect();
-  }, [text]);
+  }, [text, maxLines]);
 
   return (
     <h3
@@ -808,7 +812,7 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
         <div>
           <div className={`${
             isMiniRow
-              ? 'min-h-0 pr-4'
+              ? 'min-h-0 pr-3.5'
               : isPureList
                 ? 'min-h-0 pr-6'
                 : isRowOnMobile
@@ -821,18 +825,19 @@ const getMarketSoftBadgeStyle = (name: string, accentColor?: string) => {
           } flex items-start`}>
             <WholeWordsTitle
               text={product.productName}
-              className={`font-bold text-gray-900 leading-[1.22] ${
+              maxLines={isMiniRow ? 3 : 2}
+              className={`font-bold text-gray-900 ${
                 isMiniRow
-                  ? 'text-[12px] min-[380px]:text-[12.5px] sm:text-sm'
+                  ? 'leading-[1.16] text-[13px] min-[380px]:text-[13.5px] sm:text-[14.5px] md:text-[15px]'
                   : isPureList
-                    ? 'text-[15.5px] min-[380px]:text-[16.5px] sm:text-lg'
+                    ? 'leading-[1.22] text-[15.5px] min-[380px]:text-[16.5px] sm:text-lg'
                     : isRowOnMobile
-                      ? 'text-[15.5px] min-[380px]:text-[16.5px] sm:text-sm md:text-[15px]'
+                      ? 'leading-[1.22] text-[15.5px] min-[380px]:text-[16.5px] sm:text-sm md:text-[15px]'
                       : isThreeColMobile
-                        ? 'text-[12.5px] min-[380px]:text-[13px] sm:text-sm md:text-[15px]'
+                        ? 'leading-[1.22] text-[12.5px] min-[380px]:text-[13px] sm:text-sm md:text-[15px]'
                         : isMini
-                          ? 'text-xs sm:text-[13px]'
-                          : 'text-[13.5px] min-[380px]:text-sm sm:text-[15px] md:text-base'
+                          ? 'leading-[1.22] text-xs sm:text-[13px]'
+                          : 'leading-[1.22] text-[13.5px] min-[380px]:text-sm sm:text-[15px] md:text-base'
               }`}
             />
           </div>

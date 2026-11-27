@@ -742,15 +742,15 @@ const OpportunityDetailModalContent: React.FC<OpportunityDetailModalProps> = ({
                                 className="w-full h-full object-contain mix-blend-multiply pointer-events-none select-none group-hover:scale-105 transition-transform duration-300"
                               />
 
-                              {/* Top-Left on Image: ƏN UCUZ vs ƏN BAHALI + free unboxed market name(s) */}
+                              {/* Top-Left on Image: UCUZ vs BAHALI + free unboxed market name(s) */}
                               <div className="absolute top-1.5 left-1.5 z-20 flex flex-col items-start gap-1 pointer-events-none max-w-[calc(100%-12px)]">
                                 {isCheapest ? (
                                   <span className="px-1.5 sm:px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[9px] sm:text-[10.5px] font-black tracking-tight shadow-sm leading-none">
-                                    ƏN UCUZ
+                                    UCUZ
                                   </span>
                                 ) : (
                                   <span className="px-1.5 sm:px-2 py-0.5 rounded-md bg-gray-800/85 text-white text-[9px] sm:text-[10.5px] font-black tracking-tight shadow-sm leading-none">
-                                    ƏN BAHALI
+                                    BAHALI
                                   </span>
                                 )}
 
